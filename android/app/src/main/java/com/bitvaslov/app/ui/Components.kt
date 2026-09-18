@@ -390,7 +390,7 @@ fun GameInput(
 @Composable
 fun AnimatedTitle(primary: String, highlight: String, subtitle: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             Text(primary, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = AppColors.TextPrimary)
             Text(highlight, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = AppColors.Primary)
         }
