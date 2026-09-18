@@ -21,16 +21,19 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Scaffold
@@ -288,66 +291,127 @@ private fun CreateRoomScreen(state: UiState, vm: GameViewModel) {
     var timer by remember { mutableStateOf(15) }
     var maxP by remember { mutableStateOf(6) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = vm::dismissCreateRoom) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = Color.White)
-                }
-                Spacer(Modifier.width(4.dp))
-                Text("Создание комнаты", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = vm::dismissCreateRoom) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = Color.White)
             }
-        }
-
-        item {
-            OutlinedTextField(
-                value = roomName,
-                onValueChange = { roomName = it },
-                label = { Text("Название комнаты") },
-                singleLine = true,
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth(),
+            Text(
+                "Создание комнаты",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center,
             )
+            Spacer(Modifier.width(48.dp))
         }
 
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Приватность", style = MaterialTheme.typography.bodyMedium, color = AppColors.TextSecondary)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = isPrivate, onCheckedChange = { isPrivate = it })
-                    Text(if (isPrivate) "Приватная (только по коду)" else "Открытая (видна всем)", color = AppColors.TextPrimary)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = AppColors.Surface),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("Название комнаты", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
+                OutlinedTextField(
+                    value = roomName,
+                    onValueChange = { roomName = it },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Например: Быстрые слова") },
+                    leadingIcon = {
+                        Icon(Icons.Filled.Edit, contentDescription = null, tint = AppColors.Secondary)
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AppColors.Primary,
+                        unfocusedBorderColor = AppColors.Border,
+                        cursorColor = AppColors.Primary,
+                        focusedTextColor = AppColors.TextPrimary,
+                        unfocusedTextColor = AppColors.TextPrimary,
+                        focusedContainerColor = AppColors.Surface,
+                        unfocusedContainerColor = AppColors.Surface,
+                    ),
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = AppColors.Surface),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("Приватность", style = MaterialTheme.typography.bodyMedium, color = AppColors.TextPrimary)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    OptionCard(
+                        icon = Icons.Filled.Public,
+                        label = "Открытая",
+                        selected = !isPrivate,
+                        onClick = { isPrivate = false },
+                        modifier = Modifier.weight(1f),
+                    )
+                    OptionCard(
+                        icon = Icons.Filled.Lock,
+                        label = "Приватная",
+                        selected = isPrivate,
+                        onClick = { isPrivate = true },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
 
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Время на ход", style = MaterialTheme.typography.bodyMedium, color = AppColors.TextSecondary)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = AppColors.Surface),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("Время на ход", style = MaterialTheme.typography.bodyMedium, color = AppColors.TextPrimary)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    listOf(5, 10, 15, 20, 30).forEach { t ->
-                        FilterChip(
+                    listOf(5, 10, 15, 20, 25, 30).forEach { t ->
+                        NumberTile(
+                            value = t,
                             selected = timer == t,
                             onClick = { timer = t },
-                            label = { Text("$t") },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
             }
         }
 
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Максимум игроков", style = MaterialTheme.typography.bodyMedium, color = AppColors.TextSecondary)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = AppColors.Surface),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("Количество игроков", style = MaterialTheme.typography.bodyMedium, color = AppColors.TextPrimary)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     listOf(2, 3, 4, 5, 6).forEach { p ->
-                        FilterChip(
+                        NumberTile(
+                            value = p,
                             selected = maxP == p,
                             onClick = { maxP = p },
-                            label = { Text("$p") },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -355,18 +419,18 @@ private fun CreateRoomScreen(state: UiState, vm: GameViewModel) {
         }
 
         state.error?.let { err ->
-            item { Text(err, color = AppColors.Danger, style = MaterialTheme.typography.bodySmall) }
+            Text(err, color = AppColors.Danger, style = MaterialTheme.typography.bodySmall)
         }
 
-        item {
-            NeonButton(
-                "СОЗДАТЬ КОМНАТУ",
-                onClick = {
-                    vm.createRoom(roomName.trim().ifBlank { "Комната" }, isPrivate, timer, maxP)
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        NeonButton(
+            "СОЗДАТЬ КОМНАТУ",
+            onClick = {
+                vm.createRoom(roomName.trim().ifBlank { "Комната" }, isPrivate, timer, maxP)
+            },
+            color = AppColors.Primary,
+            contentColor = AppColors.ContentDark,
+            modifier = Modifier.fillMaxWidth().height(60.dp),
+        )
     }
 }
 

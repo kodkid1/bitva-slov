@@ -74,6 +74,7 @@ fun NeonButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     color: Color = AppColors.Primary,
+    contentColor: Color = AppColors.ContentDark,
     height: Dp = 56.dp,
 ) {
     Button(
@@ -82,7 +83,7 @@ fun NeonButton(
         shape = RoundedCornerShape(18.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = if (enabled) color else AppColors.ButtonDisabled,
-            contentColor = if (enabled) AppColors.ContentDark else AppColors.ButtonDisabledText,
+            contentColor = if (enabled) contentColor else AppColors.ButtonDisabledText,
         ),
         modifier = modifier.height(height),
     ) {
@@ -502,5 +503,51 @@ fun AnimatedTitle(primary: String, highlight: String, subtitle: String) {
         }
         Spacer(Modifier.height(6.dp))
         Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = AppColors.TextSecondary)
+    }
+}
+
+@Composable
+fun OptionCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val fg = if (selected) AppColors.ContentDark else AppColors.TextPrimary
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) AppColors.Primary else AppColors.SurfaceElevated,
+            contentColor = fg,
+        ),
+        modifier = modifier.height(56.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
+
+@Composable
+fun NumberTile(
+    value: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val fg = if (selected) AppColors.ContentDark else AppColors.TextPrimary
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) AppColors.Primary else AppColors.SurfaceElevated,
+            contentColor = fg,
+        ),
+        modifier = modifier.height(52.dp),
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        Text("$value", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
     }
 }
