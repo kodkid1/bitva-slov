@@ -44,7 +44,7 @@ data class RoomState(
                 id = o.optString("id", ""),
                 name = o.optString("name", ""),
                 isPrivate = o.optBoolean("isPrivate", false),
-                code = if (o.isNull("code")) null else o.optString("code", null),
+                code = if (o.isNull("code")) null else o.optString("code", ""),
                 hostId = o.optString("hostId", ""),
                 timer = o.optInt("timer", 15),
                 maxPlayers = o.optInt("maxPlayers", 6),
@@ -91,7 +91,7 @@ data class GameState(
             return GameState(
                 requiredLetter = o.optString("requiredLetter", ""),
                 lastWord = o.optString("lastWord", ""),
-                turnPlayerId = if (o.isNull("turnPlayerId")) null else o.optString("turnPlayerId", null),
+                turnPlayerId = if (o.isNull("turnPlayerId")) null else o.optString("turnPlayerId", ""),
                 endIn = o.optLong("endIn", 15000),
                 timer = o.optInt("timer", 15),
                 usedWords = words,

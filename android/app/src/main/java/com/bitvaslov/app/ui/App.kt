@@ -370,10 +370,25 @@ private fun GameScreen(state: UiState, vm: GameViewModel) {
             }
         }
 
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Border) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text("Последнее слово", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
+                        Text(
+                            game.lastWord.ifBlank { "—" }.uppercase(),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = AppColors.TextPrimary,
+                        )
+                    }
+                }
                 LetterOrb(letter = game.requiredLetter, isActive = game.myTurn)
-                Spacer(Modifier.height(16.dp))
                 var now by remember { mutableStateOf(System.currentTimeMillis()) }
                 LaunchedEffect(game) {
                     while (true) {
@@ -394,16 +409,15 @@ private fun GameScreen(state: UiState, vm: GameViewModel) {
             val kb = LocalSoftwareKeyboardController.current
             LaunchedEffect(game.lastWord) { text = "" }
 
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 GameInput(
                     value = text,
-                    onValueChange = { text = it },
+                    onValueChange = { text = it.take(20) },
                     onSubmit = { kb?.hide(); if (text.isNotBlank()) vm.submitWord(text.trim()) },
                     isError = state.error != null,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 state.error?.let {
-                    Spacer(Modifier.height(6.dp))
                     Text(it, color = AppColors.Danger, style = MaterialTheme.typography.bodyMedium)
                 }
             }
