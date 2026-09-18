@@ -39,7 +39,16 @@ class GameViewModel : ViewModel() {
     fun setServerUrl(url: String) = _ui.update { it.copy(serverUrl = url) }
     fun setMyName(name: String) = _ui.update { it.copy(myName = name) }
 
+    fun requestCreateRoom() = _ui.update { it.copy(showCreateRoom = true) }
+    fun dismissCreateRoom() = _ui.update { it.copy(showCreateRoom = false) }
+
+    fun requestCodeEntry() = _ui.update { it.copy(showCodeEntry = true) }
+    fun dismissCodeEntry() = _ui.update { it.copy(showCodeEntry = false) }
+
+    fun copyRoomCode(code: String) = _ui.update { it.copy(toast = "Код $code скопирован") }
+
     fun createRoom(roomName: String, isPrivate: Boolean, timer: Int, maxPlayers: Int) {
+        dismissCreateRoom()
         client?.createRoom(_ui.value.myName, roomName, isPrivate, timer, maxPlayers)
     }
 
@@ -54,7 +63,10 @@ class GameViewModel : ViewModel() {
     fun startGame() = client?.startGame()
     fun playAgain() = client?.startGame()
     fun submitWord(word: String) = client?.submitWord(word)
-    fun leaveRoom() = client?.leaveRoom()
+    fun leaveRoom() {
+        _ui.update { it.copy(screen = Screen.LOBBY, room = null, game = null, winner = null, showCreateRoom = false, showCodeEntry = false) }
+        client?.leaveRoom()
+    }
     fun refreshRooms() = client?.refreshRooms()
 
     fun clearError() = _ui.update { it.copy(error = null) }
@@ -123,7 +135,9 @@ class GameViewModel : ViewModel() {
                     val w = o?.optJSONObject("winner")?.let {
                         WinnerInfo(it.optString("id", ""), it.optString("name", ""))
                     }
-                    _ui.update { it.copy(winner = w) }
+                    _ui.update {
+                        it.copy(winner = w, screen = Screen.RESULT)
+                    }
                 }
 
                 "wordAccepted" -> {
@@ -180,4 +194,6 @@ data class UiState(
     val winner: WinnerInfo? = null,
     val error: String? = null,
     val toast: String? = null,
+    val showCreateRoom: Boolean = false,
+    val showCodeEntry: Boolean = false,
 )

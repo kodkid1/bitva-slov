@@ -8,6 +8,7 @@ enum class Screen {
     LOBBY,
     ROOM,
     GAME,
+    RESULT,
 }
 
 data class Player(
