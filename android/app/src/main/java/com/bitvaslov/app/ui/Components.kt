@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,18 +21,27 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -302,25 +312,106 @@ fun RoomCard(
     onJoin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    NeonCard(modifier, borderColor = AppColors.Border) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = AppColors.Surface.copy(alpha = 0.96f)),
+        border = BorderStroke(1.dp, AppColors.Secondary.copy(alpha = 0.35f)),
+    ) {
         Row(
             Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Bottom,
         ) {
-            Logo(size = 40.dp)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(name, style = MaterialTheme.typography.titleMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatChip("$players/$maxPlayers игроков")
-                    StatChip("$timer сек")
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(name, style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("$players/$maxPlayers", fontWeight = FontWeight.Bold, color = AppColors.Secondary)
+                    Text("$timer сек", color = AppColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    repeat(maxPlayers) { i ->
+                        Box(
+                            Modifier.size(8.dp).clip(CircleShape)
+                                .background(if (i < players) AppColors.Primary else AppColors.Border)
+                        )
+                    }
                 }
             }
             Spacer(Modifier.width(8.dp))
-            NeonButton("Войти", onJoin, modifier = Modifier.width(96.dp), height = 44.dp, color = AppColors.Primary)
+            Button(
+                onClick = onJoin,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AppColors.Secondary,
+                    contentColor = Color.White,
+                ),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text("Войти", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(4.dp))
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }
+
+@Composable
+fun ActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = AppColors.SurfaceElevated,
+            contentColor = AppColors.TextPrimary,
+        ),
+        modifier = modifier.height(56.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = AppColors.Primary, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+    }
+}
+
+@Composable
+fun MainBottomBar(selected: Int, onSelect: (Int) -> Unit) {
+    NavigationBar(containerColor = AppColors.Surface, contentColor = AppColors.TextSecondary) {
+        NavigationBarItem(
+            selected = selected == 0,
+            onClick = { onSelect(0) },
+            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
+            label = { Text("Меню") },
+            colors = navBarColors(),
+        )
+        NavigationBarItem(
+            selected = selected == 1,
+            onClick = { onSelect(1) },
+            icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
+            label = { Text("Комнаты") },
+            colors = navBarColors(),
+        )
+        NavigationBarItem(
+            selected = selected == 2,
+            onClick = { onSelect(2) },
+            icon = { Icon(Icons.Filled.Person, contentDescription = null) },
+            label = { Text("Профиль") },
+            colors = navBarColors(),
+        )
+    }
+}
+
+@Composable
+private fun navBarColors() = NavigationBarItemDefaults.colors(
+    selectedIconColor = AppColors.Primary,
+    selectedTextColor = AppColors.Primary,
+    indicatorColor = AppColors.SurfaceElevated,
+    unselectedIconColor = AppColors.TextSecondary,
+    unselectedTextColor = AppColors.TextSecondary,
+)
 
 @Composable
 fun RoomCodeCard(code: String, onCopy: () -> Unit) {

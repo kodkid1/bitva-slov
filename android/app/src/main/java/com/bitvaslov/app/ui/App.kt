@@ -14,9 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +58,7 @@ import kotlinx.coroutines.delay
 fun App(vm: GameViewModel = viewModel()) {
     val state by vm.ui.collectAsState()
     val snackbar = remember { SnackbarHostState() }
+    var bottomTab by remember { mutableStateOf(0) }
 
     LaunchedEffect(state.toast) {
         state.toast?.let {
@@ -65,12 +70,17 @@ fun App(vm: GameViewModel = viewModel()) {
     Scaffold(
         containerColor = AppColors.Background,
         snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            if (state.screen == Screen.LOBBY) {
+                MainBottomBar(selected = bottomTab, onSelect = { bottomTab = it })
+            }
+        },
     ) { padding ->
         AppBackground {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 when (state.screen) {
                     Screen.CONNECT -> ConnectScreen(state, vm)
-                    Screen.LOBBY -> LobbyScreen(state, vm)
+                    Screen.LOBBY -> LobbyScreen(state, vm, bottomTab)
                     Screen.ROOM -> RoomScreen(state, vm)
                     Screen.GAME -> GameScreen(state, vm)
                     Screen.RESULT -> ResultScreen(state, vm)
@@ -122,55 +132,110 @@ private fun ConnectScreen(state: UiState, vm: GameViewModel) {
 }
 
 @Composable
-private fun LobbyScreen(state: UiState, vm: GameViewModel) {
+private fun LobbyScreen(state: UiState, vm: GameViewModel, tab: Int) {
+    when (tab) {
+        1 -> RoomsTab(state, vm)
+        2 -> ProfileTab(state)
+        else -> MenuTab(state, vm)
+    }
+}
+
+@Composable
+private fun MenuTab(state: UiState, vm: GameViewModel) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
+            AnimatedTitle(primary = "", highlight = "БИТВА СЛОВ", subtitle = "")
+        }
+
+        item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Logo(size = 40.dp)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("БИТВА СЛОВ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
-                    Text("Привет, ${state.myName}. Найди соперников", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
+                PlayerAvatar(state.myName.ifBlank { "И" }, size = 52.dp, color = AppColors.Secondary)
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text("Привет, ${state.myName.ifBlank { "Друг" }}!", style = MaterialTheme.typography.titleLarge, color = AppColors.TextPrimary)
+                    Text("Найдите соперников и начинайте игру", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
                 }
             }
         }
 
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                NeonButton("СОЗДАТЬ КОМНАТУ", onClick = vm::requestCreateRoom, modifier = Modifier.fillMaxWidth())
-                SecondaryButton("ВОЙТИ ПО КОДУ", onClick = vm::requestCodeEntry, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                ActionButton(
+                    icon = Icons.Filled.Add,
+                    text = "Создать комнату",
+                    onClick = vm::requestCreateRoom,
+                    modifier = Modifier.weight(1f),
+                )
+                ActionButton(
+                    icon = Icons.Filled.Lock,
+                    text = "Войти по коду",
+                    onClick = vm::requestCodeEntry,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 
+item {
+            Text("Открытые комнаты", style = MaterialTheme.typography.titleLarge, color = AppColors.TextPrimary)
+        }
+
+        roomsItems(state, vm)
+    }
+}
+
+@Composable
+private fun RoomsTab(state: UiState, vm: GameViewModel) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
         item {
-            Text("Открытые комнаты", style = MaterialTheme.typography.headlineSmall)
+            AnimatedTitle(primary = "", highlight = "КОМНАТЫ", subtitle = "Присоединяйся к игре")
         }
+        roomsItems(state, vm)
+    }
+}
 
-        items(state.rooms, key = { it.id }) { room ->
-            RoomCard(
-                name = room.name,
-                players = room.players,
-                maxPlayers = room.maxPlayers,
-                timer = room.timer,
-                onJoin = { vm.joinRoomById(room.id) },
-            )
-        }
+@Composable
+private fun ProfileTab(state: UiState) {
+    Column(
+        Modifier.fillMaxSize().padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        PlayerAvatar(state.myName.ifBlank { "И" }, size = 96.dp, color = AppColors.Primary)
+        Spacer(Modifier.height(16.dp))
+        Text(state.myName.ifBlank { "Игрок" }, style = MaterialTheme.typography.headlineSmall, color = AppColors.TextPrimary)
+        Text("Профиль скоро будет тут", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
+    }
+}
 
-        if (state.rooms.isEmpty()) {
-            item {
-                Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-                    Text("Пока пусто — создай комнату", color = AppColors.TextSecondary)
-                }
+private fun LazyListScope.roomsItems(state: UiState, vm: GameViewModel) {
+    items(state.rooms, key = { it.id }) { room ->
+        RoomCard(
+            name = room.name,
+            players = room.players,
+            maxPlayers = room.maxPlayers,
+            timer = room.timer,
+            onJoin = { vm.joinRoomById(room.id) },
+        )
+    }
+
+    if (state.rooms.isEmpty()) {
+        item {
+            Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                Text("Пока пусто — создай комнату", color = AppColors.TextSecondary)
             }
         }
+    }
 
-        state.error?.let {
-            item { Text(it, color = AppColors.Danger) }
-        }
+    state.error?.let {
+        item { Text(it, color = AppColors.Danger) }
     }
 }
 
