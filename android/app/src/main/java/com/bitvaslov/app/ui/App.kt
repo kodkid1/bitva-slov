@@ -98,6 +98,7 @@ private fun ConnectScreen(state: UiState, vm: GameViewModel) {
             label = { Text("Адрес сервера") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
+            enabled = false,
         )
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(

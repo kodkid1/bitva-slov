@@ -152,7 +152,7 @@ class GameViewModel : ViewModel() {
 
 data class UiState(
     val screen: Screen = Screen.CONNECT,
-    val serverUrl: String = "https://",
+    val serverUrl: String = "https://bitva-slov.onrender.com",
     val myName: String = "",
     val rooms: List<RoomSummary> = emptyList(),
     val room: RoomState? = null,
