@@ -21,8 +21,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
@@ -40,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -148,7 +152,18 @@ private fun MenuTab(state: UiState, vm: GameViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            AnimatedTitle(primary = "", highlight = "БИТВА СЛОВ", subtitle = "")
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Битва слов",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary,
+                )
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { vm.toggleSettings() }) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Настройки", tint = Color.White)
+                }
+            }
         }
 
         item {
@@ -169,12 +184,14 @@ private fun MenuTab(state: UiState, vm: GameViewModel) {
                     text = "Создать комнату",
                     onClick = vm::requestCreateRoom,
                     modifier = Modifier.weight(1f),
+                    color = AppColors.Primary,
                 )
                 ActionButton(
                     icon = Icons.Filled.Lock,
                     text = "Войти по коду",
                     onClick = vm::requestCodeEntry,
                     modifier = Modifier.weight(1f),
+                    color = AppColors.Secondary,
                 )
             }
         }

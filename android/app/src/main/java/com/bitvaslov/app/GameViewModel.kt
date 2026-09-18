@@ -69,6 +69,7 @@ class GameViewModel : ViewModel() {
     }
     fun refreshRooms() = client?.refreshRooms()
     fun loadStats() = client?.requestStats(_ui.value.myName)
+    fun toggleSettings() = _ui.update { it.copy(toast = "Настройки скоро появятся") }
 
     fun clearError() = _ui.update { it.copy(error = null) }
     fun clearToast() = _ui.update { it.copy(toast = null) }

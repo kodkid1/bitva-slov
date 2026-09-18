@@ -361,25 +361,31 @@ fun ActionButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    color: Color = AppColors.Primary,
 ) {
+    val fg = if (color == AppColors.Primary) AppColors.ContentDark else Color.White
     Button(
         onClick = onClick,
         shape = RoundedCornerShape(18.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = AppColors.SurfaceElevated,
-            contentColor = AppColors.TextPrimary,
+            containerColor = color,
+            contentColor = fg,
         ),
-        modifier = modifier.height(56.dp),
+        modifier = modifier.height(72.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = AppColors.Primary, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(24.dp))
         Spacer(Modifier.width(8.dp))
-        Text(text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Text(text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
     }
 }
 
 @Composable
 fun MainBottomBar(selected: Int, onSelect: (Int) -> Unit) {
-    NavigationBar(containerColor = AppColors.Surface, contentColor = AppColors.TextSecondary) {
+    NavigationBar(
+        containerColor = AppColors.Surface,
+        contentColor = AppColors.TextSecondary,
+        modifier = Modifier.clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)),
+    ) {
         NavigationBarItem(
             selected = selected == 0,
             onClick = { onSelect(0) },
@@ -406,9 +412,9 @@ fun MainBottomBar(selected: Int, onSelect: (Int) -> Unit) {
 
 @Composable
 private fun navBarColors() = NavigationBarItemDefaults.colors(
-    selectedIconColor = AppColors.Primary,
+    selectedIconColor = Color.White,
     selectedTextColor = AppColors.Primary,
-    indicatorColor = AppColors.SurfaceElevated,
+    indicatorColor = Color.Transparent,
     unselectedIconColor = AppColors.TextSecondary,
     unselectedTextColor = AppColors.TextSecondary,
 )
