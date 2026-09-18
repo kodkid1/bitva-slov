@@ -1,0 +1,2 @@
+-keep class io.socket.** { *; }
+-keep class org.json.** { *; }

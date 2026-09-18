@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Битва слов</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="toast" class="toast hidden"></div>
+
+  <main class="app">
+    <section id="screen-lobby" class="screen">
+      <header class="hero">
+        <h1>Битва <span>слов</span></h1>
+        <p class="subtitle">Цепочка слов на время. Кто не успел — выбывает.</p>
+      </header>
+
+      <div class="card">
+        <label class="field">
+          <span>Твоё имя</span>
+          <input id="playerName" type="text" maxlength="20" placeholder="Например, Максим" />
+        </label>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Создать комнату</h2>
+          <button id="toggleCreate" class="ghost small">Развернуть</button>
+        </div>
+        <div id="createForm" class="hidden">
+          <label class="field">
+            <span>Название</span>
+            <input id="roomName" type="text" maxlength="30" placeholder="Комната друзей" />
+          </label>
+          <div class="row">
+            <label class="field">
+              <span>Таймер хода</span>
+              <select id="roomTimer">
+                <option value="5">5 сек</option>
+                <option value="10">10 сек</option>
+                <option value="15" selected>15 сек</option>
+                <option value="20">20 сек</option>
+                <option value="30">30 сек</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Максимум игроков</span>
+              <select id="roomMax">
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6" selected>6</option>
+              </select>
+            </label>
+          </div>
+          <label class="check">
+            <input id="roomPrivate" type="checkbox" />
+            <span>Приватная (вход по коду)</span>
+          </label>
+          <button id="createBtn" class="primary full">Создать комнату</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Публичные комнаты</h2>
+          <button id="refreshBtn" class="ghost small">Обновить</button>
+        </div>
+        <ul id="roomList" class="room-list">
+          <li class="muted">Пока нет открытых комнат</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Войти по коду</h2>
+        <div class="row">
+          <input id="codeInput" class="grow" type="text" inputmode="numeric" maxlength="4" placeholder="Код комнаты" />
+          <button id="joinCodeBtn" class="primary">Войти</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-room" class="screen hidden">
+      <div class="card">
+        <div class="card-head">
+          <h2 id="roomTitle">Комната</h2>
+          <button id="leaveRoomBtn" class="ghost small">Выйти</button>
+        </div>
+        <p id="roomMeta" class="muted"></p>
+        <p id="roomCode" class="code-box hidden"></p>
+        <ul id="roomPlayers" class="player-list"></ul>
+        <button id="startBtn" class="primary full">Начать игру</button>
+        <p id="roomHint" class="muted center"></p>
+      </div>
+    </section>
+
+    <section id="screen-game" class="screen hidden">
+      <div class="game-top">
+        <span id="gameRoomName" class="muted"></span>
+        <span id="turnHint" class="turn-hint"></span>
+      </div>
+
+      <div class="timer-wrap">
+        <div id="timerBar" class="timer-bar"></div>
+        <span id="timerText" class="timer-text">0.0</span>
+      </div>
+
+      <div class="letter-block">
+        <p class="label">Нужно слово на букву</p>
+        <div id="requiredLetter" class="letter">А</div>
+        <p id="lastWordLine" class="last-word"></p>
+      </div>
+
+      <div class="answer">
+        <input id="wordInput" type="text" maxlength="30" placeholder="Пиши слово..." autocomplete="off" />
+        <button id="sendWordBtn" class="primary">Отправить</button>
+      </div>
+      <p id="wordError" class="word-error"></p>
+
+      <div class="card">
+        <h2>Игроки</h2>
+        <ul id="gamePlayers" class="player-list"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Сказанные слова <span id="usedCount" class="muted"></span></h2>
+        <div id="usedWords" class="chips"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="winnerOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <p class="crown">Победитель</p>
+      <h2 id="winnerName">Игрок</h2>
+      <p id="winnerText" class="muted"></p>
+      <button id="playAgainBtn" class="primary full">Играть ещё раз</button>
+      <button id="backToRoomBtn" class="ghost full">Вернуться в комнату</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>

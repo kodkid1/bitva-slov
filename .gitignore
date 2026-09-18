@@ -1,0 +1,8 @@
+node_modules/
+*.log
+android/.gradle/
+android/.idea/
+android/local.properties
+android/build/
+android/app/build/
+android/captures/

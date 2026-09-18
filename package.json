@@ -1,0 +1,20 @@
+{
+  "name": "bitva-slov",
+  "version": "1.0.0",
+  "description": "Битва слов - онлайн игра в слова с таймером",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.2.1",
+    "russian-words": "^1.0.1",
+    "russian-words-2mb": "^1.0.0",
+    "socket.io": "^4.8.3",
+    "wordlist-russian": "^1.0.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}
