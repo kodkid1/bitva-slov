@@ -7,6 +7,7 @@ enum class Screen {
     CONNECT,
     LOBBY,
     CREATEROOM,
+    CODEENTRY,
     ROOM,
     GAME,
     RESULT,

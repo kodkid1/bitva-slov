@@ -1,6 +1,9 @@
 package com.bitvaslov.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,7 +51,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -92,13 +98,10 @@ fun App(vm: GameViewModel = viewModel()) {
                     Screen.CONNECT -> ConnectScreen(state, vm)
                     Screen.LOBBY -> LobbyScreen(state, vm, bottomTab)
                     Screen.CREATEROOM -> CreateRoomScreen(state, vm)
+                    Screen.CODEENTRY -> CodeEntryScreen(state, vm)
                     Screen.ROOM -> RoomScreen(state, vm)
                     Screen.GAME -> GameScreen(state, vm)
                     Screen.RESULT -> ResultScreen(state, vm)
-                }
-
-                if (state.showCodeEntry) {
-                    CodeEntryDialog(vm)
                 }
             }
         }
@@ -435,37 +438,119 @@ private fun CreateRoomScreen(state: UiState, vm: GameViewModel) {
 }
 
 @Composable
-private fun CodeEntryDialog(vm: GameViewModel) {
+private fun CodeEntryScreen(state: UiState, vm: GameViewModel) {
     var code by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = vm::dismissCodeEntry,
-        containerColor = AppColors.Surface,
-        shape = RoundedCornerShape(24.dp),
-        title = { Text("Войти по коду", style = MaterialTheme.typography.headlineSmall) },
-        text = {
-            androidx.compose.material3.OutlinedTextField(
-                value = code,
-                onValueChange = { code = it.filter { c -> c.isDigit() }.take(4) },
-                placeholder = { Text("4827") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.headlineMedium,
-            )
-        },
-        confirmButton = {
-            NeonButton("ВОЙТИ", onClick = {
-                vm.dismissCodeEntry()
-                if (code.isNotBlank()) vm.joinRoomByCode(code.trim())
-            }, modifier = Modifier.fillMaxWidth())
-        },
-        dismissButton = {
-            TextButton(onClick = vm::dismissCodeEntry, modifier = Modifier.fillMaxWidth()) {
-                Text("Отмена", color = AppColors.TextSecondary)
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(200)
+        focusRequester.requestFocus()
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = vm::dismissCodeEntry) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = Color.White)
             }
-        },
-    )
+            Text(
+                "Войти в комнату",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.width(48.dp))
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Box(Modifier.fillMaxWidth()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { focusRequester.requestFocus() },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = AppColors.Surface),
+                    border = BorderStroke(1.5.dp, AppColors.Secondary.copy(alpha = 0.6f)),
+                ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                ) {
+                    Box(
+                        Modifier.size(72.dp).clip(RoundedCornerShape(22.dp))
+                            .background(AppColors.SurfaceElevated),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.Lock,
+                            contentDescription = null,
+                            tint = AppColors.Secondary,
+                            modifier = Modifier.size(36.dp),
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        repeat(4) { i ->
+                            Box(
+                                Modifier.size(56.dp).clip(RoundedCornerShape(14.dp))
+                                    .background(AppColors.SurfaceElevated)
+                                    .border(1.5.dp, AppColors.Secondary.copy(alpha = 0.4f), RoundedCornerShape(14.dp)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (code.length > i) {
+                                    Text(
+                                        code[i].toString(),
+                                        fontSize = 24.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = AppColors.TextPrimary,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        "Введите код, чтобы зайти в комнату к друзьям!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppColors.Secondary,
+                    )
+                }
+                }
+
+                Box(
+                    Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it.filter { c -> c.isDigit() }.take(4) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.size(1.dp).alpha(0f).focusRequester(focusRequester),
+                    )
+                }
+            }
+
+            state.error?.let { err ->
+                Text(err, color = AppColors.Danger, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
+        NeonButton(
+            "ВОЙТИ",
+            onClick = {
+                if (code.length == 4) {
+                    vm.dismissCodeEntry()
+                    vm.joinRoomByCode(code.trim())
+                }
+            },
+            enabled = code.length == 4,
+            color = AppColors.Secondary,
+            contentColor = Color.White,
+            modifier = Modifier.fillMaxWidth().height(60.dp),
+        )
+    }
 }
 
 @Composable
