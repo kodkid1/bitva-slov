@@ -63,11 +63,20 @@ class GameViewModel : ViewModel() {
         viewModelScope.launch {
             when (event) {
                 "connected" -> {
-                    _ui.update { s -> s.copy(screen = Screen.LOBBY, toast = "Подключено", error = null) }
+                    val wasConnect = _ui.value.screen == Screen.CONNECT
+                    _ui.update { s ->
+                        s.copy(
+                            screen = if (wasConnect) Screen.LOBBY else s.screen,
+                            toast = if (wasConnect) "Подключено" else null,
+                            error = null,
+                        )
+                    }
                 }
 
                 "disconnected" -> {
-                    _ui.update { s -> s.copy(screen = Screen.CONNECT, toast = "Соединение потеряно", winner = null) }
+                    _ui.update { s ->
+                        s.copy(toast = "Соединение потеряно, переподключение...", winner = null)
+                    }
                 }
 
                 "roomList" -> {

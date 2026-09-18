@@ -73,7 +73,6 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         val s = socket ?: return
 
         s.on(Socket.EVENT_DISCONNECT) {
-            MyIds.current = null
             onEvent("disconnected", null)
         }
 
