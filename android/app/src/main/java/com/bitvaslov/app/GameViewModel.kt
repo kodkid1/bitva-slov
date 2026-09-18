@@ -68,6 +68,7 @@ class GameViewModel : ViewModel() {
         client?.leaveRoom()
     }
     fun refreshRooms() = client?.refreshRooms()
+    fun loadStats() = client?.requestStats(_ui.value.myName)
 
     fun clearError() = _ui.update { it.copy(error = null) }
     fun clearToast() = _ui.update { it.copy(toast = null) }
@@ -172,6 +173,13 @@ class GameViewModel : ViewModel() {
                         _ui.update { it.copy(error = o?.optString("error", "Не удалось войти")) }
                     }
                 }
+
+                "_ack_stats" -> {
+                    val o = data as? JSONObject
+                    if (o != null) {
+                        _ui.update { it.copy(stats = PlayerStats.fromJson(o)) }
+                    }
+                }
             }
         }
     }
@@ -192,6 +200,7 @@ data class UiState(
     val room: RoomState? = null,
     val game: GameState? = null,
     val winner: WinnerInfo? = null,
+    val stats: PlayerStats? = null,
     val error: String? = null,
     val toast: String? = null,
     val showCreateRoom: Boolean = false,

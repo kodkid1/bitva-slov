@@ -19,6 +19,35 @@ const PORT = process.env.PORT || 3000;
 
 const rooms = new Map();
 const players = new Map();
+const stats = new Map();
+
+function emptyStats() {
+  return { games: 0, wins: 0, losses: 0, bestStreak: 0, currentStreak: 0 };
+}
+
+function getStats(name) {
+  const key = normalize2(name).toLowerCase();
+  return stats.get(key) || emptyStats();
+}
+
+function recordGame(playersList, winnerId) {
+  playersList.forEach((p) => {
+    const key = normalize2(p.name).toLowerCase();
+    const s = stats.get(key) || emptyStats();
+    s.games += 1;
+    if (winnerId === null) {
+      s.currentStreak = 0;
+    } else if (p.id === winnerId) {
+      s.wins += 1;
+      s.currentStreak += 1;
+      if (s.currentStreak > s.bestStreak) s.bestStreak = s.currentStreak;
+    } else {
+      s.losses += 1;
+      s.currentStreak = 0;
+    }
+    stats.set(key, s);
+  });
+}
 
 const START_LETTERS = 'абвгдежзиклмнопрстуфхцчшщэюя'.split('');
 
@@ -238,6 +267,7 @@ function checkGameOver(room) {
     room.turnTimer = null;
     room.turnPlayerId = null;
     room.winner = alive[0] ? { id: alive[0].id, name: alive[0].name } : null;
+    recordGame(room.players, room.winner ? room.winner.id : null);
     sendRoom(room);
     sendGame(room);
     io.to(room.id).emit('gameOver', { winner: room.winner });
@@ -391,6 +421,11 @@ io.on('connection', (socket) => {
 
   socket.on('roomListRequest', () => {
     broadcastRoomList();
+  });
+
+  socket.on('statsRequest', (payload, callback) => {
+    const name = normalize2(payload && payload.name);
+    if (typeof callback === 'function') callback(getStats(name));
   });
 
   socket.on('submitWord', (payload) => {

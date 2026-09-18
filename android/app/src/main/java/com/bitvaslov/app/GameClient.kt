@@ -63,6 +63,10 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         socket?.emit("roomListRequest")
     }
 
+    fun requestStats(name: String) {
+        socket?.emit("statsRequest", JSONObject().put("name", name), callback("_ack_stats"))
+    }
+
     private fun callback(tag: String): io.socket.client.Ack {
         return io.socket.client.Ack { args ->
             onEvent(tag, args.firstOrNull())

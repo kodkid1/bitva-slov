@@ -108,6 +108,27 @@ data class WinnerInfo(
     val name: String,
 )
 
+data class PlayerStats(
+    val games: Int,
+    val wins: Int,
+    val losses: Int,
+    val bestStreak: Int,
+    val currentStreak: Int,
+) {
+    companion object {
+        fun fromJson(o: JSONObject) = PlayerStats(
+            games = o.optInt("games", 0),
+            wins = o.optInt("wins", 0),
+            losses = o.optInt("losses", 0),
+            bestStreak = o.optInt("bestStreak", 0),
+            currentStreak = o.optInt("currentStreak", 0),
+        )
+    }
+
+    val winRate: Int
+        get() = if (games > 0) (wins * 100 / games) else 0
+}
+
 object MyIds {
     var current: String? = null
 }

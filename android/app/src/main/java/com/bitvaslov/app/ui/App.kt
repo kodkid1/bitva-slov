@@ -135,7 +135,7 @@ private fun ConnectScreen(state: UiState, vm: GameViewModel) {
 private fun LobbyScreen(state: UiState, vm: GameViewModel, tab: Int) {
     when (tab) {
         1 -> RoomsTab(state, vm)
-        2 -> ProfileTab(state)
+        2 -> ProfileTab(state, vm)
         else -> MenuTab(state, vm)
     }
 }
@@ -202,7 +202,9 @@ private fun RoomsTab(state: UiState, vm: GameViewModel) {
 }
 
 @Composable
-private fun ProfileTab(state: UiState) {
+private fun ProfileTab(state: UiState, vm: GameViewModel) {
+    LaunchedEffect(Unit) { vm.loadStats() }
+    val s = state.stats
     Column(
         Modifier.fillMaxSize().padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -211,7 +213,29 @@ private fun ProfileTab(state: UiState) {
         PlayerAvatar(state.myName.ifBlank { "И" }, size = 96.dp, color = AppColors.Primary)
         Spacer(Modifier.height(16.dp))
         Text(state.myName.ifBlank { "Игрок" }, style = MaterialTheme.typography.headlineSmall, color = AppColors.TextPrimary)
-        Text("Профиль скоро будет тут", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
+        Spacer(Modifier.height(24.dp))
+
+        NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Border) {
+            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Статистика", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    StatChip("Игр: ${s?.games ?: 0}", modifier = Modifier.weight(1f), active = true)
+                    StatChip("Побед: ${s?.wins ?: 0}", modifier = Modifier.weight(1f), active = true)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    StatChip("Винрейт: ${s?.winRate ?: 0}%", modifier = Modifier.weight(1f), active = true)
+                    StatChip("Поражений: ${s?.losses ?: 0}", modifier = Modifier.weight(1f), active = true)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("Победная серия", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    StatChip("Текущий: ${s?.currentStreak ?: 0}", modifier = Modifier.weight(1f), color = AppColors.Secondary)
+                    StatChip("Рекорд: ${s?.bestStreak ?: 0}", modifier = Modifier.weight(1f), color = AppColors.Warning)
+                }
+            }
+        }
+        Spacer(Modifier.height(40.dp))
+        Text("Счётчики обновляются после игры", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
     }
 }
 

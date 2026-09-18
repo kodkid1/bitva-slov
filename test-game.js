@@ -99,6 +99,21 @@ async function main() {
   check('игрок выбыл по таймеру', !!elim.name, elim.name);
   check('определён победитель', gameover.winner && gameover.winner.name === turnName, JSON.stringify(gameover.winner) + ' ожидался ' + turnName);
 
+  const loserName = turnName === 'Аня' ? 'Боря' : 'Аня';
+  const winnerStats = await new Promise((resolve) =>
+    a.emit('statsRequest', { name: turnName }, resolve)
+  );
+  const loserStats = await new Promise((resolve) =>
+    a.emit('statsRequest', { name: loserName }, resolve)
+  );
+  check('победитель: 1 игра, 1 победа, серия 1',
+    winnerStats.games === 1 && winnerStats.wins === 1 && winnerStats.currentStreak === 1 &&
+    winnerStats.bestStreak === 1,
+    JSON.stringify(winnerStats));
+  check('проигравший: 1 игра, 1 поражение, серия 0',
+    loserStats.games === 1 && loserStats.losses === 1 && loserStats.currentStreak === 0,
+    JSON.stringify(loserStats));
+
   a.close();
   b.close();
 
