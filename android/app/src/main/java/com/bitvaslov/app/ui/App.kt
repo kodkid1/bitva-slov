@@ -146,7 +146,7 @@ private fun StatChip(text: String, color: Color = Accent) {
 }
 
 @Composable
-private fun RoomCard(room: RoomSummary, onJoin: () -> Unit, modifier: Modifier = Modifier) {
+private fun RoomCard(room: RoomSummary, modifier: Modifier = Modifier, onJoin: () -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = CardShape,
