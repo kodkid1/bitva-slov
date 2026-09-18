@@ -44,7 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -111,7 +110,6 @@ private fun GlowButton(text: String, onClick: () -> Unit, modifier: Modifier = M
             contentColor = if (enabled) Color(0xFF01231A) else Color(0xFF9AA0D0),
         ),
         modifier = modifier
-            .shadow(if (enabled) 12.dp else 0.dp, RoundedCornerShape(16.dp), clip = false)
             .height(54.dp),
     ) {
         Text(text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
@@ -123,7 +121,6 @@ private fun Logo(size: Int = 72, letter: String = "Б") {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier.size(size.dp)
-                .shadow(20.dp, CircleShape)
                 .clip(CircleShape)
                 .background(AccentBrush),
             contentAlignment = Alignment.Center,
@@ -168,7 +165,7 @@ private fun RoomCard(room: RoomSummary, modifier: Modifier = Modifier, onJoin: (
                 Text(room.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                 Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatChip("${room.players}/$room.maxPlayers ☺")
+                    StatChip("${room.players}/$room.maxPlayers")
                     StatChip("${room.timer} сек")
                 }
             }
@@ -295,8 +292,6 @@ private fun LobbyScreen(state: UiState, vm: GameViewModel) {
             item {
                 Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("🃏", fontSize = 34.sp)
-                        Spacer(Modifier.height(8.dp))
                         Text("Пока пусто — создай комнату", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -445,9 +440,9 @@ private fun RoomScreen(state: UiState, vm: GameViewModel) {
             Column(Modifier.weight(1f)) {
                 Text(room.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-                    StatChip("${room.players.size}/$room.maxPlayers ☺")
+                    StatChip("${room.players.size}/$room.maxPlayers")
                     StatChip("${room.timer} сек")
-                    StatChip(if (room.isPrivate) "🔒 чужой код" else "публичная", color = Purple)
+                    StatChip(if (room.isPrivate) "по коду" else "публичная", color = Purple)
                 }
             }
             OutlinedButton(onClick = vm::leaveRoom) { Text("Выйти") }
@@ -490,7 +485,7 @@ private fun RoomScreen(state: UiState, vm: GameViewModel) {
                             Text(p.name.firstOrNull()?.uppercase() ?: "?", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Accent)
                         }
                         Spacer(Modifier.width(12.dp))
-                        Text(p.name + if (p.id == room.hostId) "  👑" else "")
+                        Text(p.name + if (p.id == room.hostId) "  (создатель)" else "")
                     }
                 }
             }
@@ -561,7 +556,6 @@ private fun GameScreen(state: UiState, vm: GameViewModel) {
                     Spacer(Modifier.height(8.dp))
                     Box(
                         Modifier.size(120.dp)
-                            .shadow(18.dp, CircleShape)
                             .clip(CircleShape)
                             .background(Accent.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center,
@@ -645,7 +639,7 @@ private fun GameScreen(state: UiState, vm: GameViewModel) {
                             }
                             Spacer(Modifier.width(10.dp))
                             Text(
-                                "${p.name}${if (isMe) " (ты)" else ""}${if (!p.alive) "  ✖" else ""}",
+                                "${p.name}${if (isMe) " (ты)" else ""}${if (!p.alive) "  (выбыл)" else ""}",
                                 color = if (p.alive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = if (isMe) FontWeight.Bold else FontWeight.Normal,
                             )
@@ -666,7 +660,7 @@ private fun GameScreen(state: UiState, vm: GameViewModel) {
                 shape = RoundedCornerShape(24.dp),
                 title = {
                     Text(
-                        if (winner.id == MyIds.current) "🏆 Ты победил!" else "🏆 Победил «${winner.name}»",
+                        if (winner.id == MyIds.current) "Ты победил!" else "Победил «${winner.name}»",
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
