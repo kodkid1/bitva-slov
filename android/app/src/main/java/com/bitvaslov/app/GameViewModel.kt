@@ -16,6 +16,7 @@ class GameViewModel : ViewModel() {
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
     private var client: GameClient? = null
+    private var roomListJob: kotlinx.coroutines.Job? = null
 
     fun connect(url: String, name: String) {
         _ui.update {
@@ -24,6 +25,14 @@ class GameViewModel : ViewModel() {
         client?.disconnect()
         client = GameClient { event, data -> handleEvent(event, data) }
         client?.connect(url)
+
+        roomListJob?.cancel()
+        roomListJob = viewModelScope.launch {
+            while (true) {
+                delay(4000)
+                if (_ui.value.screen == Screen.LOBBY) client?.refreshRooms()
+            }
+        }
     }
 
     fun setServerUrl(url: String) = _ui.update { it.copy(serverUrl = url) }
@@ -144,6 +153,7 @@ class GameViewModel : ViewModel() {
     }
 
     override fun onCleared() {
+        roomListJob?.cancel()
         client?.disconnect()
         client = null
         super.onCleared()
