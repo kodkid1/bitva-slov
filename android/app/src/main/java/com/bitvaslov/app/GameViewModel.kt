@@ -39,8 +39,8 @@ class GameViewModel : ViewModel() {
     fun setServerUrl(url: String) = _ui.update { it.copy(serverUrl = url) }
     fun setMyName(name: String) = _ui.update { it.copy(myName = name) }
 
-    fun requestCreateRoom() = _ui.update { it.copy(showCreateRoom = true) }
-    fun dismissCreateRoom() = _ui.update { it.copy(showCreateRoom = false) }
+    fun requestCreateRoom() = _ui.update { it.copy(screen = Screen.CREATEROOM) }
+    fun dismissCreateRoom() = _ui.update { it.copy(screen = Screen.LOBBY) }
 
     fun requestCodeEntry() = _ui.update { it.copy(showCodeEntry = true) }
     fun dismissCodeEntry() = _ui.update { it.copy(showCodeEntry = false) }
@@ -48,7 +48,6 @@ class GameViewModel : ViewModel() {
     fun copyRoomCode(code: String) = _ui.update { it.copy(toast = "Код $code скопирован") }
 
     fun createRoom(roomName: String, isPrivate: Boolean, timer: Int, maxPlayers: Int) {
-        dismissCreateRoom()
         client?.createRoom(_ui.value.myName, roomName, isPrivate, timer, maxPlayers)
     }
 
@@ -64,7 +63,7 @@ class GameViewModel : ViewModel() {
     fun playAgain() = client?.startGame()
     fun submitWord(word: String) = client?.submitWord(word)
     fun leaveRoom() {
-        _ui.update { it.copy(screen = Screen.LOBBY, room = null, game = null, winner = null, showCreateRoom = false, showCodeEntry = false) }
+        _ui.update { it.copy(screen = Screen.LOBBY, room = null, game = null, winner = null, showCodeEntry = false) }
         client?.leaveRoom()
     }
     fun refreshRooms() = client?.refreshRooms()
@@ -204,6 +203,5 @@ data class UiState(
     val stats: PlayerStats? = null,
     val error: String? = null,
     val toast: String? = null,
-    val showCreateRoom: Boolean = false,
     val showCodeEntry: Boolean = false,
 )

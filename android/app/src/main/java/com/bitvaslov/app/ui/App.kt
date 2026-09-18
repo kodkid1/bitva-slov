@@ -19,15 +19,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Scaffold
@@ -85,14 +88,12 @@ fun App(vm: GameViewModel = viewModel()) {
                 when (state.screen) {
                     Screen.CONNECT -> ConnectScreen(state, vm)
                     Screen.LOBBY -> LobbyScreen(state, vm, bottomTab)
+                    Screen.CREATEROOM -> CreateRoomScreen(state, vm)
                     Screen.ROOM -> RoomScreen(state, vm)
                     Screen.GAME -> GameScreen(state, vm)
                     Screen.RESULT -> ResultScreen(state, vm)
                 }
 
-                if (state.showCreateRoom) {
-                    CreateRoomDialog(state, vm)
-                }
                 if (state.showCodeEntry) {
                     CodeEntryDialog(vm)
                 }
@@ -281,56 +282,83 @@ private fun LazyListScope.roomsItems(state: UiState, vm: GameViewModel) {
 }
 
 @Composable
-private fun CreateRoomDialog(state: UiState, vm: GameViewModel) {
+private fun CreateRoomScreen(state: UiState, vm: GameViewModel) {
     var roomName by remember { mutableStateOf("") }
     var isPrivate by remember { mutableStateOf(false) }
     var timer by remember { mutableStateOf(15) }
     var maxP by remember { mutableStateOf(6) }
 
-    AlertDialog(
-        onDismissRequest = vm::dismissCreateRoom,
-        containerColor = AppColors.Surface,
-        shape = RoundedCornerShape(24.dp),
-        title = { Text("Создание комнаты", style = MaterialTheme.typography.headlineSmall) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                androidx.compose.material3.OutlinedTextField(
-                    value = roomName,
-                    onValueChange = { roomName = it },
-                    label = { Text("Название комнаты") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                androidx.compose.material3.Text("Приватность", color = AppColors.TextSecondary, style = MaterialTheme.typography.bodyMedium)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = vm::dismissCreateRoom) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = Color.White)
+                }
+                Spacer(Modifier.width(4.dp))
+                Text("Создание комнаты", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary)
+            }
+        }
+
+        item {
+            OutlinedTextField(
+                value = roomName,
+                onValueChange = { roomName = it },
+                label = { Text("Название комнаты") },
+                singleLine = true,
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Приватность", style = MaterialTheme.typography.bodyMedium, color = AppColors.TextSecondary)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = isPrivate, onCheckedChange = { isPrivate = it })
-                    Text(if (isPrivate) "Приватная (по коду)" else "Открытая (в списке)")
+                    Text(if (isPrivate) "Приватная (только по коду)" else "Открытая (видна всем)", color = AppColors.TextPrimary)
                 }
-                androidx.compose.material3.Text("Время на ход", color = AppColors.TextSecondary, style = MaterialTheme.typography.bodyMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            }
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Время на ход", style = MaterialTheme.typography.bodyMedium, color = AppColors.TextSecondary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     listOf(5, 10, 15, 20, 30).forEach { t ->
-                        androidx.compose.material3.FilterChip(
+                        FilterChip(
                             selected = timer == t,
                             onClick = { timer = t },
                             label = { Text("$t") },
                         )
                     }
                 }
-                androidx.compose.material3.Text("Игроков", color = AppColors.TextSecondary, style = MaterialTheme.typography.bodyMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            }
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Максимум игроков", style = MaterialTheme.typography.bodyMedium, color = AppColors.TextSecondary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     listOf(2, 3, 4, 5, 6).forEach { p ->
-                        androidx.compose.material3.FilterChip(
+                        FilterChip(
                             selected = maxP == p,
                             onClick = { maxP = p },
                             label = { Text("$p") },
                         )
                     }
                 }
-                state.error?.let { Text(it, color = AppColors.Danger, style = MaterialTheme.typography.bodySmall) }
             }
-        },
-        confirmButton = {
+        }
+
+        state.error?.let { err ->
+            item { Text(err, color = AppColors.Danger, style = MaterialTheme.typography.bodySmall) }
+        }
+
+        item {
             NeonButton(
                 "СОЗДАТЬ КОМНАТУ",
                 onClick = {
@@ -338,13 +366,8 @@ private fun CreateRoomDialog(state: UiState, vm: GameViewModel) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
-        },
-        dismissButton = {
-            TextButton(onClick = vm::dismissCreateRoom, modifier = Modifier.fillMaxWidth()) {
-                Text("Отмена", color = AppColors.TextSecondary)
-            }
-        },
-    )
+        }
+    }
 }
 
 @Composable

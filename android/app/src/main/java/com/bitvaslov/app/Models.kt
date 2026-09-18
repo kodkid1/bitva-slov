@@ -6,6 +6,7 @@ import org.json.JSONObject
 enum class Screen {
     CONNECT,
     LOBBY,
+    CREATEROOM,
     ROOM,
     GAME,
     RESULT,

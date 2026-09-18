@@ -371,11 +371,11 @@ fun ActionButton(
             containerColor = color,
             contentColor = fg,
         ),
-        modifier = modifier.height(72.dp),
+        modifier = modifier.height(88.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(24.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(26.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
     }
 }
 
