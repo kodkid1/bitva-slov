@@ -9,6 +9,7 @@ import com.bitvaslov.app.ui.BitvaSlovTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SettingsStore.init(this)
         setContent {
             BitvaSlovTheme {
                 App()

@@ -13,7 +13,15 @@ import org.json.JSONObject
 
 class GameViewModel : ViewModel() {
 
-    private val _ui = MutableStateFlow(UiState())
+    private val _ui = MutableStateFlow(
+        UiState(
+            soundOn = SettingsStore.soundOn,
+            volume = SettingsStore.volume,
+            vibrationOn = SettingsStore.vibrationOn,
+            vibrationIntensity = SettingsStore.vibrationIntensity,
+            notificationsOn = SettingsStore.notificationsOn,
+        )
+    )
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
     private var client: GameClient? = null
@@ -68,7 +76,33 @@ class GameViewModel : ViewModel() {
     }
     fun refreshRooms() = client?.refreshRooms()
     fun loadStats() = client?.requestStats(_ui.value.myName)
-    fun toggleSettings() = _ui.update { it.copy(toast = "Настройки скоро появятся") }
+    fun toggleSettings() = _ui.update { it.copy(screen = Screen.SETTINGS) }
+    fun closeSettings() = _ui.update { it.copy(screen = Screen.LOBBY) }
+
+    fun setSoundOn(on: Boolean) {
+        SettingsStore.setSound(on)
+        _ui.update { it.copy(soundOn = on) }
+    }
+
+    fun setVolume(value: Float) {
+        SettingsStore.setVolume(value)
+        _ui.update { it.copy(volume = value) }
+    }
+
+    fun setVibrationOn(on: Boolean) {
+        SettingsStore.setVibration(on)
+        _ui.update { it.copy(vibrationOn = on) }
+    }
+
+    fun setVibrationIntensity(value: Float) {
+        SettingsStore.setVibrationIntensity(value)
+        _ui.update { it.copy(vibrationIntensity = value) }
+    }
+
+    fun setNotificationsOn(on: Boolean) {
+        SettingsStore.setNotifications(on)
+        _ui.update { it.copy(notificationsOn = on) }
+    }
 
     fun clearError() = _ui.update { it.copy(error = null) }
     fun clearToast() = _ui.update { it.copy(toast = null) }
@@ -203,4 +237,9 @@ data class UiState(
     val stats: PlayerStats? = null,
     val error: String? = null,
     val toast: String? = null,
+    val soundOn: Boolean = true,
+    val volume: Float = 0.7f,
+    val vibrationOn: Boolean = true,
+    val vibrationIntensity: Float = 0.5f,
+    val notificationsOn: Boolean = true,
 )

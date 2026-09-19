@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,6 +41,10 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -99,6 +104,7 @@ fun App(vm: GameViewModel = viewModel()) {
                     Screen.LOBBY -> LobbyScreen(state, vm, bottomTab)
                     Screen.CREATEROOM -> CreateRoomScreen(state, vm)
                     Screen.CODEENTRY -> CodeEntryScreen(state, vm)
+                    Screen.SETTINGS -> SettingsScreen(state, vm)
                     Screen.ROOM -> RoomScreen(state, vm)
                     Screen.GAME -> GameScreen(state, vm)
                     Screen.RESULT -> ResultScreen(state, vm)
@@ -433,6 +439,136 @@ private fun CreateRoomScreen(state: UiState, vm: GameViewModel) {
             color = AppColors.Primary,
             contentColor = AppColors.ContentDark,
             modifier = Modifier.fillMaxWidth().height(60.dp),
+        )
+    }
+}
+
+@Composable
+private fun SettingsScreen(state: UiState, vm: GameViewModel) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = vm::closeSettings) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = Color.White)
+            }
+            Text(
+                "Настройки",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.width(48.dp))
+        }
+
+        SettingsBlock(title = "Звук") {
+            SettingsToggleRow(
+                label = "Звук",
+                checked = state.soundOn,
+                onCheckedChange = vm::setSoundOn,
+            )
+            Spacer(Modifier.height(12.dp))
+            SettingsSliderRow(
+                label = "Громкость",
+                value = state.volume,
+                onValueChange = vm::setVolume,
+                enabled = state.soundOn,
+            )
+        }
+
+        SettingsBlock(title = "Вибрация") {
+            SettingsToggleRow(
+                label = "Вибрация",
+                checked = state.vibrationOn,
+                onCheckedChange = vm::setVibrationOn,
+            )
+            Spacer(Modifier.height(12.dp))
+            SettingsSliderRow(
+                label = "Интенсивность",
+                value = state.vibrationIntensity,
+                onValueChange = vm::setVibrationIntensity,
+                enabled = state.vibrationOn,
+            )
+        }
+
+        SettingsBlock(title = "Уведомления") {
+            SettingsToggleRow(
+                label = "Уведомления",
+                checked = state.notificationsOn,
+                onCheckedChange = vm::setNotificationsOn,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsBlock(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = AppColors.Surface),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = AppColors.TextSecondary)
+            Spacer(Modifier.height(12.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+        Spacer(Modifier.weight(1f))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = AppColors.ContentDark,
+                checkedTrackColor = AppColors.Primary,
+                uncheckedThumbColor = AppColors.TextSecondary,
+                uncheckedTrackColor = AppColors.SurfaceElevated,
+                uncheckedBorderColor = AppColors.Border,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun SettingsSliderRow(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    enabled: Boolean,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            colors = SliderDefaults.colors(
+                thumbColor = AppColors.Primary,
+                activeTrackColor = AppColors.Primary,
+                inactiveTrackColor = AppColors.SurfaceElevated,
+                disabledThumbColor = AppColors.TextDisabled,
+                disabledActiveTrackColor = AppColors.SurfaceElevated,
+                disabledInactiveTrackColor = AppColors.SurfaceElevated,
+            ),
         )
     }
 }
