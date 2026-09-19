@@ -36,6 +36,7 @@ class GameViewModel : ViewModel() {
                 myId = ProfileStore.playerId,
                 myName = ProfileStore.name,
                 myAvatarId = ProfileStore.avatarId,
+                myPhoto = ProfileStore.photo,
             )
         }
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
@@ -84,8 +85,16 @@ class GameViewModel : ViewModel() {
     fun setAvatar(id: Int) {
         ProfileStore.saveAvatar(id)
         _ui.update { it.copy(myAvatarId = ProfileStore.avatarId) }
-        client?.login(_ui.value.myId, _ui.value.myName.trim(), ProfileStore.avatarId)
+        client?.login(_ui.value.myId, _ui.value.myName.trim(), ProfileStore.avatarId, _ui.value.myPhoto)
     }
+
+    fun setPhoto(base64: String) {
+        ProfileStore.savePhoto(base64)
+        _ui.update { it.copy(myPhoto = base64) }
+        client?.login(_ui.value.myId, _ui.value.myName.trim(), _ui.value.myAvatarId, base64)
+    }
+
+    fun clearPhoto() = setPhoto("")
 
     fun requestCreateRoom() = _ui.update { it.copy(screen = Screen.CREATEROOM) }
     fun dismissCreateRoom() = _ui.update { it.copy(screen = Screen.LOBBY) }
@@ -212,7 +221,7 @@ class GameViewModel : ViewModel() {
                     }
                     sendPushToken()
                     client?.setActive(_isActive)
-                    client?.login(_ui.value.myId, _ui.value.myName.trim(), _ui.value.myAvatarId)
+                    client?.login(_ui.value.myId, _ui.value.myName.trim(), _ui.value.myAvatarId, _ui.value.myPhoto)
                     client?.requestFriends()
                     if (DeepLink.hasInvite) {
                         val roomId = DeepLink.roomId
@@ -394,6 +403,7 @@ data class UiState(
     val myId: String = "",
     val myName: String = "",
     val myAvatarId: Int = 0,
+    val myPhoto: String = "",
     val rooms: List<RoomSummary> = emptyList(),
     val room: RoomState? = null,
     val game: GameState? = null,

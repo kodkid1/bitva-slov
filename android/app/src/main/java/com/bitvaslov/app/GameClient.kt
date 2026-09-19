@@ -82,11 +82,12 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         socket?.emit("setActive", JSONObject().put("active", active))
     }
 
-    fun login(id: String, name: String, avatarId: Int) {
+    fun login(id: String, name: String, avatarId: Int, photo: String) {
         val o = JSONObject()
         o.put("id", id)
         o.put("name", name)
         o.put("avatarId", avatarId)
+        if (photo.isNotBlank()) o.put("photo", photo)
         socket?.emit("login", o)
     }
 

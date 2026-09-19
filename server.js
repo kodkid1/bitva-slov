@@ -200,21 +200,22 @@ function userRef(id) {
   return db.collection('users').doc(id);
 }
 
-async function ensureUser(userId, name, avatarId) {
+async function ensureUser(userId, name, avatarId, photo) {
   if (!db || !userId) return;
   const clean = normalize2(name);
   if (!clean) return;
   userName.set(userId, clean);
+  const patch = {
+    name: clean,
+    nameLower: nameKey(clean),
+    avatarId: Number.isFinite(avatarId) ? avatarId : 0,
+    updatedAt: Date.now(),
+  };
+  if (typeof photo === 'string') {
+    patch.photo = photo.length > 0 && photo.length < 200000 ? photo : FieldValue.delete();
+  }
   try {
-    await userRef(userId).set(
-      {
-        name: clean,
-        nameLower: nameKey(clean),
-        avatarId: Number.isFinite(avatarId) ? avatarId : 0,
-        updatedAt: Date.now(),
-      },
-      { merge: true },
-    );
+    await userRef(userId).set(patch, { merge: true });
   } catch (err) {
     console.warn('Не удалось сохранить игрока:', err.message);
   }
@@ -246,7 +247,7 @@ async function userInfoFor(ids) {
     snaps.forEach((s) => {
       if (s.exists) {
         const d = s.data() || {};
-        map[s.id] = { name: d.name || s.id, avatarId: d.avatarId || 0 };
+        map[s.id] = { name: d.name || s.id, avatarId: d.avatarId || 0, photo: d.photo || '' };
       }
     });
   } catch (err) {
@@ -263,6 +264,7 @@ async function buildFriendsPayload(id) {
     id: fid,
     name: (info[fid] || {}).name || fid,
     avatarId: (info[fid] || {}).avatarId || 0,
+    photo: (info[fid] || {}).photo || '',
   });
   return {
     friends: data.friends.map((fid) => ({ ...entry(fid), ...presenceFor(fid) })),
@@ -765,7 +767,7 @@ io.on('connection', (socket) => {
     const userId = normalize2(payload && payload.id) || (name ? nameKey(name) : '');
     if (!userId || !name) return;
     attachUser(socket, userId);
-    await ensureUser(userId, name, payload && payload.avatarId);
+    await ensureUser(userId, name, payload && payload.avatarId, payload && payload.photo);
     socket.emit('friendsUpdate', await buildFriendsPayload(userId));
     notifyFriendsPresence(userId);
   });
@@ -800,6 +802,7 @@ io.on('connection', (socket) => {
           id,
           name: d.name || id,
           avatarId: d.avatarId || 0,
+          photo: d.photo || '',
           ...presenceFor(id),
           ...getStats(d.name || id),
         });

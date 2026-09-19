@@ -18,6 +18,7 @@ data class Friend(
     val id: String,
     val name: String,
     val avatarId: Int = 0,
+    val photo: String = "",
     val online: Boolean = false,
     val inGame: Boolean = false,
 ) {
@@ -26,6 +27,7 @@ data class Friend(
             id = o.optString("id", ""),
             name = o.optString("name", ""),
             avatarId = o.optInt("avatarId", 0),
+            photo = o.optString("photo", ""),
             online = o.optBoolean("online", false),
             inGame = o.optBoolean("inGame", false),
         )
@@ -36,12 +38,14 @@ data class FriendRef(
     val id: String,
     val name: String,
     val avatarId: Int = 0,
+    val photo: String = "",
 ) {
     companion object {
         fun fromJson(o: JSONObject) = FriendRef(
             id = o.optString("id", ""),
             name = o.optString("name", ""),
             avatarId = o.optInt("avatarId", 0),
+            photo = o.optString("photo", ""),
         )
     }
 }
@@ -50,6 +54,7 @@ data class UserSummary(
     val id: String,
     val name: String,
     val avatarId: Int = 0,
+    val photo: String = "",
     val online: Boolean = false,
     val inGame: Boolean = false,
     val games: Int = 0,
@@ -60,6 +65,7 @@ data class UserSummary(
             id = o.optString("id", ""),
             name = o.optString("name", ""),
             avatarId = o.optInt("avatarId", 0),
+            photo = o.optString("photo", ""),
             online = o.optBoolean("online", false),
             inGame = o.optBoolean("inGame", false),
             games = o.optInt("games", 0),

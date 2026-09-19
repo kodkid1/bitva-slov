@@ -9,6 +9,7 @@ object ProfileStore {
     private const val KEY_ID = "player_id"
     private const val KEY_NAME = "name"
     private const val KEY_AVATAR = "avatar_id"
+    private const val KEY_PHOTO = "photo"
 
     private lateinit var prefs: SharedPreferences
 
@@ -17,6 +18,8 @@ object ProfileStore {
     var name: String = ""
         private set
     var avatarId: Int = 0
+        private set
+    var photo: String = ""
         private set
 
     fun init(context: Context) {
@@ -29,6 +32,7 @@ object ProfileStore {
         playerId = id
         name = prefs.getString(KEY_NAME, "") ?: ""
         avatarId = prefs.getInt(KEY_AVATAR, (playerId.hashCode() and 0x7fffffff) % AVATAR_COUNT)
+        photo = prefs.getString(KEY_PHOTO, "") ?: ""
     }
 
     fun saveName(value: String) {
@@ -39,6 +43,11 @@ object ProfileStore {
     fun saveAvatar(id: Int) {
         avatarId = ((id % AVATAR_COUNT) + AVATAR_COUNT) % AVATAR_COUNT
         prefs.edit().putInt(KEY_AVATAR, avatarId).apply()
+    }
+
+    fun savePhoto(base64: String) {
+        photo = base64
+        prefs.edit().putString(KEY_PHOTO, base64).apply()
     }
 
     val hasProfile: Boolean get() = name.isNotBlank()

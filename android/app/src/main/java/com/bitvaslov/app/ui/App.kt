@@ -1,5 +1,7 @@
 package com.bitvaslov.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -69,6 +71,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -81,6 +84,25 @@ import com.bitvaslov.app.Screen
 import com.bitvaslov.app.UiState
 import com.bitvaslov.app.WinnerInfo
 import kotlinx.coroutines.delay
+
+private fun encodeAvatar(context: android.content.Context, uri: android.net.Uri): String? {
+    return try {
+        val input = context.contentResolver.openInputStream(uri) ?: return null
+        val original = android.graphics.BitmapFactory.decodeStream(input)
+        input.close()
+        if (original == null) return null
+        val maxSide = 160f
+        val scale = minOf(maxSide / original.width, maxSide / original.height, 1f)
+        val w = (original.width * scale).toInt().coerceAtLeast(1)
+        val h = (original.height * scale).toInt().coerceAtLeast(1)
+        val scaled = android.graphics.Bitmap.createScaledBitmap(original, w, h, true)
+        val out = java.io.ByteArrayOutputStream()
+        scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
+        android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+    } catch (e: Exception) {
+        null
+    }
+}
 
 @Composable
 fun App(vm: GameViewModel = viewModel()) {
@@ -226,7 +248,7 @@ private fun MenuTab(state: UiState, vm: GameViewModel) {
 
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                PlayerAvatar(state.myName.ifBlank { "И" }, size = 52.dp, color = AppColors.Secondary, avatarId = state.myAvatarId)
+                PlayerAvatar(state.myName.ifBlank { "И" }, size = 52.dp, color = AppColors.Secondary, avatarId = state.myAvatarId, photo = state.myPhoto)
                 Spacer(Modifier.width(14.dp))
                 Column {
                     Text("Привет, ${state.myName.ifBlank { "Друг" }}!", style = MaterialTheme.typography.titleLarge, color = AppColors.TextPrimary)
@@ -325,7 +347,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
             items(state.searchResults, key = { "s_${it.id}" }) { user ->
                 NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Secondary) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PlayerAvatar(user.name, size = 44.dp, avatarId = user.avatarId)
+                        PlayerAvatar(user.name, size = 44.dp, avatarId = user.avatarId, photo = user.photo)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(user.name, color = AppColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
@@ -348,7 +370,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
             items(state.incomingRequests, key = { "in_${it.id}" }) { req ->
                 NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Primary) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PlayerAvatar(req.name, size = 40.dp, avatarId = req.avatarId)
+                        PlayerAvatar(req.name, size = 40.dp, avatarId = req.avatarId, photo = req.photo)
                         Spacer(Modifier.width(12.dp))
                         Text(
                             req.name,
@@ -371,7 +393,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
             item { Text("Отправленные заявки", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary) }
             items(state.outgoingRequests, key = { "out_${it.id}" }) { req ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PlayerAvatar(req.name, size = 28.dp, avatarId = req.avatarId)
+                    PlayerAvatar(req.name, size = 28.dp, avatarId = req.avatarId, photo = req.photo)
                     Spacer(Modifier.width(10.dp))
                     Text("${req.name} — ждём подтверждения", color = AppColors.TextSecondary)
                 }
@@ -391,6 +413,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                             size = 44.dp,
                             color = if (friend.online) AppColors.Primary else AppColors.Border,
                             avatarId = friend.avatarId,
+                            photo = friend.photo,
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -435,6 +458,10 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
     var editing by remember { mutableStateOf(false) }
     var nameDraft by remember { mutableStateOf(state.myName) }
     val kb = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) encodeAvatar(context, uri)?.let { vm.setPhoto(it) }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -443,8 +470,23 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
     ) {
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                PlayerAvatar(state.myName.ifBlank { "И" }, size = 96.dp, avatarId = state.myAvatarId)
+                PlayerAvatar(
+                    state.myName.ifBlank { "И" },
+                    size = 96.dp,
+                    avatarId = state.myAvatarId,
+                    photo = state.myPhoto,
+                )
                 Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = { photoPicker.launch("image/*") }) {
+                        Text("ЗАГРУЗИТЬ ФОТО", color = AppColors.Primary)
+                    }
+                    if (state.myPhoto.isNotBlank()) {
+                        OutlinedButton(onClick = { vm.clearPhoto() }) {
+                            Text("УБРАТЬ", color = AppColors.TextSecondary)
+                        }
+                    }
+                }
                 if (editing) {
                     OutlinedTextField(
                         value = nameDraft,
@@ -1013,7 +1055,7 @@ private fun RoomScreen(state: UiState, vm: GameViewModel) {
                 } else {
                     onlineFriends.forEach { friend ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            PlayerAvatar(friend.name, size = 32.dp, color = AppColors.Primary, avatarId = friend.avatarId)
+                            PlayerAvatar(friend.name, size = 32.dp, color = AppColors.Primary, avatarId = friend.avatarId, photo = friend.photo)
                             Spacer(Modifier.width(10.dp))
                             Text(
                                 friend.name,
