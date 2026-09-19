@@ -1,6 +1,7 @@
 package com.bitvaslov.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -19,12 +20,26 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SettingsStore.init(this)
+        handleIntent(intent)
         requestNotificationPermission()
         setContent {
             BitvaSlovTheme {
                 App()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        val extras = intent?.extras ?: return
+        if (extras.getString("type") != "invite") return
+        DeepLink.roomId = extras.getString("roomId")
+        DeepLink.code = extras.getString("code")
     }
 
     private fun requestNotificationPermission() {

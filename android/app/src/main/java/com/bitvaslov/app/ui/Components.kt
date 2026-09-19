@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -404,6 +405,13 @@ fun MainBottomBar(selected: Int, onSelect: (Int) -> Unit) {
         NavigationBarItem(
             selected = selected == 2,
             onClick = { onSelect(2) },
+            icon = { Icon(Icons.Filled.People, contentDescription = null) },
+            label = { Text("Друзья") },
+            colors = navBarColors(),
+        )
+        NavigationBarItem(
+            selected = selected == 3,
+            onClick = { onSelect(3) },
             icon = { Icon(Icons.Filled.Person, contentDescription = null) },
             label = { Text("Профиль") },
             colors = navBarColors(),

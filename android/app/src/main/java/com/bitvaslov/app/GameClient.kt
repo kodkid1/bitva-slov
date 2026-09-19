@@ -82,6 +82,36 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         socket?.emit("setActive", JSONObject().put("active", active))
     }
 
+    fun login(name: String) {
+        socket?.emit("login", JSONObject().put("name", name))
+    }
+
+    fun requestFriends() {
+        socket?.emit("friendsRequest")
+    }
+
+    fun sendFriendRequest(name: String, fromName: String) {
+        val o = JSONObject()
+        o.put("name", name)
+        o.put("fromName", fromName)
+        socket?.emit("friendRequest", o, callback("_ack_friend"))
+    }
+
+    fun respondFriendRequest(name: String, accept: Boolean) {
+        val o = JSONObject()
+        o.put("name", name)
+        o.put("accept", accept)
+        socket?.emit("friendRespond", o, callback("_ack_friend"))
+    }
+
+    fun removeFriend(name: String) {
+        socket?.emit("removeFriend", JSONObject().put("name", name), callback("_ack_friend"))
+    }
+
+    fun inviteFriend(name: String) {
+        socket?.emit("inviteFriend", JSONObject().put("name", name), callback("_ack_invite"))
+    }
+
     private fun callback(tag: String): io.socket.client.Ack {
         return io.socket.client.Ack { args ->
             onEvent(tag, args.firstOrNull())
@@ -135,6 +165,18 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
 
         s.on("errorMessage") { args ->
             onEvent("errorMessage", args.firstOrNull() as? JSONObject)
+        }
+
+        s.on("friendsUpdate") { args ->
+            onEvent("friendsUpdate", args.firstOrNull() as? JSONObject)
+        }
+
+        s.on("friendPresence") { args ->
+            onEvent("friendPresence", args.firstOrNull() as? JSONObject)
+        }
+
+        s.on("roomInvite") { args ->
+            onEvent("roomInvite", args.firstOrNull() as? JSONObject)
         }
     }
 }

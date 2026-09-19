@@ -27,6 +27,7 @@ class GameViewModel : ViewModel() {
     private var client: GameClient? = null
     private var roomListJob: kotlinx.coroutines.Job? = null
     private var _isActive = true
+    private var lastCreateAt = 0L
 
     init {
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
@@ -35,6 +36,9 @@ class GameViewModel : ViewModel() {
                     task.result?.let { setPushToken(it) }
                 }
             }
+        com.google.firebase.messaging.FirebaseMessaging.getInstance()
+            .subscribeToTopic("all")
+            .addOnCompleteListener { }
     }
 
     fun connect(url: String, name: String) {
@@ -66,6 +70,9 @@ class GameViewModel : ViewModel() {
     fun copyRoomCode(code: String) = _ui.update { it.copy(toast = "Код $code скопирован") }
 
     fun createRoom(roomName: String, isPrivate: Boolean, timer: Int, maxPlayers: Int) {
+        val now = System.currentTimeMillis()
+        if (now - lastCreateAt < 2000) return
+        lastCreateAt = now
         client?.createRoom(_ui.value.myName, roomName, isPrivate, timer, maxPlayers)
     }
 
@@ -147,6 +154,22 @@ class GameViewModel : ViewModel() {
         }
     }
 
+    fun requestFriends() = client?.requestFriends()
+    fun addFriend(name: String) = client?.sendFriendRequest(name.trim(), _ui.value.myName.trim())
+    fun respondFriend(name: String, accept: Boolean) = client?.respondFriendRequest(name, accept)
+    fun removeFriend(name: String) = client?.removeFriend(name)
+    fun inviteFriend(name: String) = client?.inviteFriend(name)
+
+    fun acceptInvite() {
+        val invite = _ui.value.incomingInvite ?: return
+        _ui.update { it.copy(incomingInvite = null) }
+        val name = _ui.value.myName.trim()
+        if (invite.roomId.isNotBlank()) client?.joinRoom(name, roomId = invite.roomId)
+        else if (invite.code.isNotBlank()) client?.joinRoom(name, code = invite.code)
+    }
+
+    fun declineInvite() = _ui.update { it.copy(incomingInvite = null) }
+
     private fun handleEvent(event: String, data: Any?) {
         viewModelScope.launch {
             when (event) {
@@ -161,6 +184,16 @@ class GameViewModel : ViewModel() {
                     }
                     sendPushToken()
                     client?.setActive(_isActive)
+                    client?.login(_ui.value.myName.trim())
+                    client?.requestFriends()
+                    if (DeepLink.hasInvite) {
+                        val roomId = DeepLink.roomId
+                        val code = DeepLink.code
+                        DeepLink.clear()
+                        val name = _ui.value.myName.trim()
+                        if (!roomId.isNullOrBlank()) client?.joinRoom(name, roomId = roomId)
+                        else if (!code.isNullOrBlank()) client?.joinRoom(name, code = code)
+                    }
                 }
 
                 "disconnected" -> {
@@ -256,6 +289,63 @@ class GameViewModel : ViewModel() {
                         _ui.update { it.copy(stats = PlayerStats.fromJson(o)) }
                     }
                 }
+
+                "friendsUpdate" -> {
+                    val o = data as? JSONObject ?: return@launch
+                    val fArr = o.optJSONArray("friends") ?: JSONArray()
+                    val inArr = o.optJSONArray("incoming") ?: JSONArray()
+                    val outArr = o.optJSONArray("outgoing") ?: JSONArray()
+                    val friends = (0 until fArr.length()).map { Friend.fromJson(fArr.getJSONObject(it)) }
+                    val incoming = (0 until inArr.length()).map { inArr.getJSONObject(it).optString("name", "") }
+                    val outgoing = (0 until outArr.length()).map { outArr.getJSONObject(it).optString("name", "") }
+                    _ui.update {
+                        it.copy(
+                            friends = friends.filter { f -> f.name.isNotBlank() },
+                            incomingRequests = incoming.filter { n -> n.isNotBlank() },
+                            outgoingRequests = outgoing.filter { n -> n.isNotBlank() },
+                        )
+                    }
+                }
+
+                "friendPresence" -> {
+                    val o = data as? JSONObject ?: return@launch
+                    val friendName = o.optString("name", "")
+                    val online = o.optBoolean("online", false)
+                    val inGame = o.optBoolean("inGame", false)
+                    _ui.update { s ->
+                        s.copy(friends = s.friends.map {
+                            if (it.name.equals(friendName, ignoreCase = true)) {
+                                it.copy(online = online, inGame = inGame)
+                            } else {
+                                it
+                            }
+                        })
+                    }
+                }
+
+                "roomInvite" -> {
+                    val o = data as? JSONObject ?: return@launch
+                    _ui.update { it.copy(incomingInvite = RoomInvite.fromJson(o)) }
+                }
+
+                "_ack_friend" -> {
+                    val o = data as? JSONObject
+                    if (o?.optBoolean("ok", false) != true) {
+                        _ui.update { it.copy(error = o?.optString("error", "Не получилось") ?: "Не получилось") }
+                    }
+                }
+
+                "_ack_invite" -> {
+                    val o = data as? JSONObject
+                    if (o?.optBoolean("ok", false) == true) {
+                        val online = o.optBoolean("online", false)
+                        _ui.update {
+                            it.copy(toast = if (online) "Приглашение отправлено" else "Уведомление отправлено")
+                        }
+                    } else {
+                        _ui.update { it.copy(error = o?.optString("error", "Не удалось пригласить") ?: "Не удалось пригласить") }
+                    }
+                }
             }
         }
     }
@@ -277,6 +367,10 @@ data class UiState(
     val game: GameState? = null,
     val winner: WinnerInfo? = null,
     val stats: PlayerStats? = null,
+    val friends: List<Friend> = emptyList(),
+    val incomingRequests: List<String> = emptyList(),
+    val outgoingRequests: List<String> = emptyList(),
+    val incomingInvite: RoomInvite? = null,
     val error: String? = null,
     val toast: String? = null,
     val soundOn: Boolean = true,

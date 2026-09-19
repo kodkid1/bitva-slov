@@ -14,6 +14,48 @@ enum class Screen {
     RESULT,
 }
 
+data class Friend(
+    val name: String,
+    val online: Boolean = false,
+    val inGame: Boolean = false,
+) {
+    companion object {
+        fun fromJson(o: JSONObject) = Friend(
+            name = o.optString("name", ""),
+            online = o.optBoolean("online", false),
+            inGame = o.optBoolean("inGame", false),
+        )
+    }
+}
+
+data class RoomInvite(
+    val roomId: String,
+    val code: String,
+    val roomName: String,
+    val fromName: String,
+) {
+    companion object {
+        fun fromJson(o: JSONObject) = RoomInvite(
+            roomId = o.optString("roomId", ""),
+            code = o.optString("code", ""),
+            roomName = o.optString("roomName", ""),
+            fromName = o.optString("fromName", ""),
+        )
+    }
+}
+
+object DeepLink {
+    var roomId: String? = null
+    var code: String? = null
+
+    fun clear() {
+        roomId = null
+        code = null
+    }
+
+    val hasInvite: Boolean get() = !roomId.isNullOrBlank() || !code.isNullOrBlank()
+}
+
 data class Player(
     val id: String,
     val name: String,

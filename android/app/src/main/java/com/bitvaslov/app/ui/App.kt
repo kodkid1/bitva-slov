@@ -25,8 +25,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -107,7 +112,10 @@ fun App(vm: GameViewModel = viewModel()) {
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (state.screen == Screen.LOBBY) {
-                MainBottomBar(selected = bottomTab, onSelect = { bottomTab = it })
+                MainBottomBar(selected = bottomTab, onSelect = {
+                    bottomTab = it
+                    if (it == 2) vm.requestFriends()
+                })
             }
         },
     ) { padding ->
@@ -125,6 +133,25 @@ fun App(vm: GameViewModel = viewModel()) {
                 }
             }
         }
+    }
+
+    state.incomingInvite?.let { invite ->
+        AlertDialog(
+            onDismissRequest = { vm.declineInvite() },
+            containerColor = AppColors.Surface,
+            title = { Text("Приглашение в комнату") },
+            text = { Text("${invite.fromName} зовёт в «${invite.roomName}»") },
+            confirmButton = {
+                TextButton(onClick = { vm.acceptInvite() }) {
+                    Text("ВОЙТИ", color = AppColors.Primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.declineInvite() }) {
+                    Text("Позже", color = AppColors.TextSecondary)
+                }
+            },
+        )
     }
 }
 
@@ -166,7 +193,8 @@ private fun ConnectScreen(state: UiState, vm: GameViewModel) {
 private fun LobbyScreen(state: UiState, vm: GameViewModel, tab: Int) {
     when (tab) {
         1 -> RoomsTab(state, vm)
-        2 -> ProfileTab(state, vm)
+        2 -> FriendsTab(state, vm)
+        3 -> ProfileTab(state, vm)
         else -> MenuTab(state, vm)
     }
 }
@@ -242,6 +270,124 @@ private fun RoomsTab(state: UiState, vm: GameViewModel) {
             AnimatedTitle(primary = "", highlight = "КОМНАТЫ", subtitle = "Присоединяйся к игре")
         }
         roomsItems(state, vm)
+    }
+}
+
+@Composable
+private fun FriendsTab(state: UiState, vm: GameViewModel) {
+    LaunchedEffect(Unit) { vm.requestFriends() }
+    var newFriend by remember { mutableStateOf("") }
+    val kb = LocalSoftwareKeyboardController.current
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item { AnimatedTitle(primary = "", highlight = "ДРУЗЬЯ", subtitle = "Зови друзей в игру") }
+
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = newFriend,
+                    onValueChange = { newFriend = it },
+                    label = { Text("Имя друга") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(10.dp))
+                IconButton(
+                    onClick = {
+                        if (newFriend.isNotBlank()) {
+                            kb?.hide()
+                            vm.addFriend(newFriend)
+                            newFriend = ""
+                        }
+                    },
+                ) {
+                    Icon(Icons.Filled.PersonAdd, contentDescription = "Добавить", tint = AppColors.Primary)
+                }
+            }
+        }
+
+        if (state.incomingRequests.isNotEmpty()) {
+            item { Text("Заявки в друзья", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary) }
+            items(state.incomingRequests, key = { "in_$it" }) { friendName ->
+                NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Primary) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PlayerAvatar(friendName, size = 40.dp, color = AppColors.Secondary)
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            friendName,
+                            modifier = Modifier.weight(1f),
+                            color = AppColors.TextPrimary,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        IconButton(onClick = { vm.respondFriend(friendName, true) }) {
+                            Icon(Icons.Filled.Check, contentDescription = "Принять", tint = AppColors.Primary)
+                        }
+                        IconButton(onClick = { vm.respondFriend(friendName, false) }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Отклонить", tint = AppColors.Danger)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (state.outgoingRequests.isNotEmpty()) {
+            item { Text("Отправленные заявки", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary) }
+            items(state.outgoingRequests, key = { "out_$it" }) { friendName ->
+                Text("$friendName — ждём подтверждения", color = AppColors.TextSecondary)
+            }
+        }
+
+        item { Text("Мои друзья", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary) }
+
+        if (state.friends.isEmpty()) {
+            item { Text("Пока никого. Добавь друга по имени выше.", color = AppColors.TextSecondary) }
+        } else {
+            items(state.friends, key = { "f_${it.name}" }) { friend ->
+                NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Border) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PlayerAvatar(
+                            friend.name,
+                            size = 44.dp,
+                            color = if (friend.online) AppColors.Primary else AppColors.Border,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                friend.name,
+                                color = AppColors.TextPrimary,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            val status = when {
+                                friend.inGame -> "в игре"
+                                friend.online -> "в сети"
+                                else -> "не в сети"
+                            }
+                            val statusColor = when {
+                                friend.inGame -> AppColors.Warning
+                                friend.online -> AppColors.Primary
+                                else -> AppColors.TextSecondary
+                            }
+                            Text(status, color = statusColor, style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (friend.online) {
+                            IconButton(onClick = { vm.inviteFriend(friend.name) }) {
+                                Icon(Icons.Filled.GroupAdd, contentDescription = "Пригласить", tint = AppColors.Primary)
+                            }
+                        }
+                        IconButton(onClick = { vm.removeFriend(friend.name) }) {
+                            Icon(Icons.Filled.PersonRemove, contentDescription = "Удалить", tint = AppColors.TextSecondary)
+                        }
+                    }
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
     }
 }
 
@@ -724,6 +870,35 @@ private fun RoomScreen(state: UiState, vm: GameViewModel) {
                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(code))
                 vm.copyRoomCode(code)
             })
+        }
+
+        val onlineFriends = state.friends.filter { it.online }
+        NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Border) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Пригласить друзей", style = MaterialTheme.typography.titleMedium)
+                if (onlineFriends.isEmpty()) {
+                    Text(
+                        "Никого нет в сети",
+                        color = AppColors.TextSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    onlineFriends.forEach { friend ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            PlayerAvatar(friend.name, size = 32.dp, color = AppColors.Primary)
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                friend.name,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            IconButton(onClick = { vm.inviteFriend(friend.name) }) {
+                                Icon(Icons.Filled.GroupAdd, contentDescription = "Пригласить", tint = AppColors.Primary)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Border) {
