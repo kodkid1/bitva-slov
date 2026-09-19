@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "805465462420",
+    "project_id": "bitva-slov",
+    "storage_bucket": "bitva-slov.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:805465462420:android:c9b158a6a124b2ad16c681",
+        "android_client_info": {
+          "package_name": "com.bitvaslov.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2utZGXmGJ4e1wMNMslS3IxYy5uXzTk5Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

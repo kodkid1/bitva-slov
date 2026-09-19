@@ -26,6 +26,16 @@ class GameViewModel : ViewModel() {
 
     private var client: GameClient? = null
     private var roomListJob: kotlinx.coroutines.Job? = null
+    private var _isActive = true
+
+    init {
+        com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    task.result?.let { setPushToken(it) }
+                }
+            }
+    }
 
     fun connect(url: String, name: String) {
         _ui.update {
@@ -102,10 +112,40 @@ class GameViewModel : ViewModel() {
     fun setNotificationsOn(on: Boolean) {
         SettingsStore.setNotifications(on)
         _ui.update { it.copy(notificationsOn = on) }
+        syncPush()
+    }
+
+    fun setActive(active: Boolean) {
+        _isActive = active
+        client?.setActive(active)
     }
 
     fun clearError() = _ui.update { it.copy(error = null) }
     fun clearToast() = _ui.update { it.copy(toast = null) }
+
+    fun setPushToken(token: String) {
+        PushTokenStore.current = token
+        sendPushToken()
+    }
+
+    private fun sendPushToken() {
+        if (!_ui.value.notificationsOn) return
+        val name = _ui.value.myName.trim()
+        val token = PushTokenStore.current ?: return
+        if (name.isBlank()) return
+        client?.registerPush(name, token)
+    }
+
+    private fun syncPush() {
+        val name = _ui.value.myName.trim()
+        if (name.isBlank()) return
+        if (_ui.value.notificationsOn) {
+            val token = PushTokenStore.current ?: return
+            client?.registerPush(name, token)
+        } else {
+            client?.unregisterPush(name)
+        }
+    }
 
     private fun handleEvent(event: String, data: Any?) {
         viewModelScope.launch {
@@ -119,6 +159,8 @@ class GameViewModel : ViewModel() {
                             error = null,
                         )
                     }
+                    sendPushToken()
+                    client?.setActive(_isActive)
                 }
 
                 "disconnected" -> {

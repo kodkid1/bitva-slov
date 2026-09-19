@@ -67,6 +67,21 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         socket?.emit("statsRequest", JSONObject().put("name", name), callback("_ack_stats"))
     }
 
+    fun registerPush(name: String, token: String) {
+        val o = JSONObject()
+        o.put("name", name)
+        o.put("token", token)
+        socket?.emit("registerPush", o)
+    }
+
+    fun unregisterPush(name: String) {
+        socket?.emit("unregisterPush", JSONObject().put("name", name))
+    }
+
+    fun setActive(active: Boolean) {
+        socket?.emit("setActive", JSONObject().put("active", active))
+    }
+
     private fun callback(tag: String): io.socket.client.Ack {
         return io.socket.client.Ack { args ->
             onEvent(tag, args.firstOrNull())

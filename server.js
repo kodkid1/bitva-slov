@@ -21,6 +21,58 @@ const rooms = new Map();
 const players = new Map();
 const stats = new Map();
 
+const pushTokens = new Map();
+const activeSockets = new Set();
+
+let messaging = null;
+try {
+  const admin = require('firebase-admin');
+  let serviceAccount = null;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  } else {
+    const localKey = path.join(__dirname, 'firebase-admin.json');
+    if (fs.existsSync(localKey)) {
+      serviceAccount = JSON.parse(fs.readFileSync(localKey, 'utf8'));
+    }
+  }
+  if (serviceAccount) {
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    messaging = admin.messaging();
+    console.log('Firebase подключён, пуши включены');
+  } else {
+    console.log('Firebase не настроен, пуши отключены');
+  }
+} catch (err) {
+  console.warn('Firebase недоступен, пуши отключены:', err.message);
+}
+
+function nameKey(name) {
+  return normalize2(name).toLowerCase();
+}
+
+function sendPush(name, title, body, data) {
+  if (!messaging) return;
+  const token = pushTokens.get(nameKey(name));
+  if (!token) return;
+  messaging
+    .send({ token, notification: { title, body }, data: data || {} })
+    .catch((err) => {
+      console.warn('Не удалось отправить пуш:', err.message);
+      if (err.code === 'messaging/registration-token-not-registered') {
+        pushTokens.delete(nameKey(name));
+      }
+    });
+}
+
+function sendPushToRoom(room, title, body, excludeId) {
+  room.players.forEach((p) => {
+    if (p.id === excludeId) return;
+    if (activeSockets.has(p.id)) return;
+    sendPush(p.name, title, body);
+  });
+}
+
 function emptyStats() {
   return { games: 0, wins: 0, losses: 0, bestStreak: 0, currentStreak: 0 };
 }
@@ -236,6 +288,14 @@ function startTurn(room) {
   clearTimeout(room.turnTimer);
   room.deadline = Date.now() + room.timer * 1000;
   sendGame(room);
+  const turnPlayer = room.players.find((p) => p.id === room.turnPlayerId);
+  if (turnPlayer && !activeSockets.has(turnPlayer.id)) {
+    sendPush(
+      turnPlayer.name,
+      'Твой ход!',
+      'Назови слово на «' + room.requiredLetter.toUpperCase() + '»',
+    );
+  }
   room.turnTimer = setTimeout(() => handleTimeout(room), room.timer * 1000 + 400);
 }
 
@@ -271,6 +331,11 @@ function checkGameOver(room) {
     sendRoom(room);
     sendGame(room);
     io.to(room.id).emit('gameOver', { winner: room.winner });
+    if (room.winner) {
+      sendPushToRoom(room, 'Игра окончена', 'Победил ' + room.winner.name + '!');
+    } else {
+      sendPushToRoom(room, 'Игра окончена', 'Ничья!');
+    }
     return true;
   }
   return false;
@@ -290,6 +355,7 @@ function beginGame(room) {
   sendRoom(room);
   io.to(room.id).emit('gameStarted', {});
   startTurn(room);
+  sendPushToRoom(room, 'Игра началась!', 'Скорее открывай «Битву слов»');
 }
 
 function leaveRoom(socket) {
@@ -398,6 +464,7 @@ io.on('connection', (socket) => {
     if (typeof callback === 'function') callback({ ok: true, roomId: room.id });
     sendRoom(room);
     broadcastRoomList();
+    sendPushToRoom(room, 'Новый игрок', playerName + ' зашёл в комнату', socket.id);
   });
 
   socket.on('leaveRoom', () => {
@@ -426,6 +493,25 @@ io.on('connection', (socket) => {
   socket.on('statsRequest', (payload, callback) => {
     const name = normalize2(payload && payload.name);
     if (typeof callback === 'function') callback(getStats(name));
+  });
+
+  socket.on('registerPush', (payload) => {
+    const name = normalize2(payload && payload.name);
+    const token = payload && payload.token;
+    if (!name || !token) return;
+    pushTokens.set(nameKey(name), token);
+  });
+
+  socket.on('unregisterPush', (payload) => {
+    const name = normalize2(payload && payload.name);
+    if (!name) return;
+    pushTokens.delete(nameKey(name));
+  });
+
+  socket.on('setActive', (payload) => {
+    const active = !!(payload && payload.active);
+    if (active) activeSockets.add(socket.id);
+    else activeSockets.delete(socket.id);
   });
 
   socket.on('submitWord', (payload) => {
@@ -464,6 +550,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    activeSockets.delete(socket.id);
     leaveRoom(socket);
   });
 });
