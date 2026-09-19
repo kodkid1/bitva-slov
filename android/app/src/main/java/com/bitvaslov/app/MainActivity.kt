@@ -20,6 +20,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SettingsStore.init(this)
+        ProfileStore.init(this)
         handleIntent(intent)
         requestNotificationPermission()
         setContent {

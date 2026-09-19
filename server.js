@@ -96,23 +96,32 @@ function stringifyData(data) {
   return out;
 }
 
-async function getTokenFor(name) {
-  const id = nameKey(name);
-  if (pushTokens.has(id)) return pushTokens.get(id);
+async function getTokenFor(userId, name) {
+  const key = userId || nameKey(name || '');
+  if (!key) return null;
+  if (pushTokens.has(key)) return pushTokens.get(key);
   if (!db) return null;
   try {
-    const snap = await db.collection('users').doc(id).get();
-    const token = snap.exists ? (snap.data() || {}).token : null;
-    if (token) pushTokens.set(id, token);
+    const snap = await db.collection('users').doc(key).get();
+    let token = snap.exists ? (snap.data() || {}).token : null;
+    if (!token && name) {
+      const byName = await db
+        .collection('users')
+        .where('nameLower', '==', nameKey(name))
+        .limit(1)
+        .get();
+      if (!byName.empty) token = (byName.docs[0].data() || {}).token || null;
+    }
+    if (token) pushTokens.set(key, token);
     return token || null;
   } catch (err) {
     return null;
   }
 }
 
-async function sendPush(name, title, body, data) {
+async function sendPush(userId, name, title, body, data) {
   if (!messaging) return;
-  const token = await getTokenFor(name);
+  const token = await getTokenFor(userId, name);
   if (!token) return;
   try {
     await messaging.send({
@@ -123,12 +132,15 @@ async function sendPush(name, title, body, data) {
   } catch (err) {
     console.warn('Не удалось отправить пуш:', err.message);
     if (err.code === 'messaging/registration-token-not-registered') {
-      pushTokens.delete(nameKey(name));
-      if (db && FieldValue) {
-        db.collection('users')
-          .doc(nameKey(name))
-          .set({ token: FieldValue.delete() }, { merge: true })
-          .catch(() => {});
+      const key = userId || nameKey(name || '');
+      if (key) {
+        pushTokens.delete(key);
+        if (db && FieldValue) {
+          db.collection('users')
+            .doc(key)
+            .set({ token: FieldValue.delete() }, { merge: true })
+            .catch(() => {});
+        }
       }
     }
   }
@@ -138,19 +150,18 @@ function sendPushToRoom(room, title, body, excludeId) {
   room.players.forEach((p) => {
     if (p.id === excludeId) return;
     if (activeSockets.has(p.id)) return;
-    sendPush(p.name, title, body);
+    sendPush(p.userId, p.name, title, body);
   });
 }
 
 const socketName = new Map();
 const nameSockets = new Map();
+const userName = new Map();
 
-function attachName(socket, rawName) {
-  const name = normalize2(rawName);
-  if (!name) return null;
-  const id = nameKey(name);
+function attachUser(socket, userId) {
+  if (!userId) return null;
   const prev = socketName.get(socket.id);
-  if (prev === id) return id;
+  if (prev === userId) return userId;
   if (prev) {
     const set = nameSockets.get(prev);
     if (set) {
@@ -158,13 +169,13 @@ function attachName(socket, rawName) {
       if (!set.size) nameSockets.delete(prev);
     }
   }
-  socketName.set(socket.id, id);
-  if (!nameSockets.has(id)) nameSockets.set(id, new Set());
-  nameSockets.get(id).add(socket.id);
-  return id;
+  socketName.set(socket.id, userId);
+  if (!nameSockets.has(userId)) nameSockets.set(userId, new Set());
+  nameSockets.get(userId).add(socket.id);
+  return userId;
 }
 
-function detachName(socket) {
+function detachUser(socket) {
   const id = socketName.get(socket.id);
   if (!id) return;
   socketName.delete(socket.id);
@@ -189,11 +200,19 @@ function userRef(id) {
   return db.collection('users').doc(id);
 }
 
-async function ensureUser(name) {
-  if (!db) return;
+async function ensureUser(userId, name, avatarId) {
+  if (!db || !userId) return;
+  const clean = normalize2(name);
+  if (!clean) return;
+  userName.set(userId, clean);
   try {
-    await userRef(nameKey(name)).set(
-      { name: normalize2(name), updatedAt: Date.now() },
+    await userRef(userId).set(
+      {
+        name: clean,
+        nameLower: nameKey(clean),
+        avatarId: Number.isFinite(avatarId) ? avatarId : 0,
+        updatedAt: Date.now(),
+      },
       { merge: true },
     );
   } catch (err) {
@@ -216,16 +235,19 @@ async function loadFriendData(id) {
   }
 }
 
-async function namesFor(ids) {
+async function userInfoFor(ids) {
   const map = {};
   ids.forEach((id) => {
-    map[id] = id;
+    map[id] = { name: id, avatarId: 0 };
   });
   if (!db || !ids.length) return map;
   try {
     const snaps = await db.getAll(...ids.map((id) => userRef(id)));
     snaps.forEach((s) => {
-      if (s.exists) map[s.id] = (s.data() || {}).name || s.id;
+      if (s.exists) {
+        const d = s.data() || {};
+        map[s.id] = { name: d.name || s.id, avatarId: d.avatarId || 0 };
+      }
     });
   } catch (err) {
     return map;
@@ -236,14 +258,16 @@ async function namesFor(ids) {
 async function buildFriendsPayload(id) {
   const data = await loadFriendData(id);
   const ids = [...data.friends, ...data.incoming, ...data.outgoing];
-  const names = await namesFor(ids);
+  const info = await userInfoFor(ids);
+  const entry = (fid) => ({
+    id: fid,
+    name: (info[fid] || {}).name || fid,
+    avatarId: (info[fid] || {}).avatarId || 0,
+  });
   return {
-    friends: data.friends.map((fid) => ({
-      name: names[fid] || fid,
-      ...presenceFor(fid),
-    })),
-    incoming: data.incoming.map((fid) => ({ name: names[fid] || fid })),
-    outgoing: data.outgoing.map((fid) => ({ name: names[fid] || fid })),
+    friends: data.friends.map((fid) => ({ ...entry(fid), ...presenceFor(fid) })),
+    incoming: data.incoming.map(entry),
+    outgoing: data.outgoing.map(entry),
   };
 }
 
@@ -268,12 +292,16 @@ async function acceptFriends(aId, bId) {
 async function notifyFriendsPresence(id) {
   const data = await loadFriendData(id);
   const status = presenceFor(id);
-  const name = await namesFor([id]);
+  const info = await userInfoFor([id]);
   data.friends.forEach((fid) => {
     const sockets = nameSockets.get(fid);
     if (!sockets || !sockets.size) return;
     sockets.forEach((sid) =>
-      io.to(sid).emit('friendPresence', { name: name[id], ...status }),
+      io.to(sid).emit('friendPresence', {
+        id,
+        name: (info[id] || {}).name || id,
+        ...status,
+      }),
     );
   });
 }
@@ -496,6 +524,7 @@ function startTurn(room) {
   const turnPlayer = room.players.find((p) => p.id === room.turnPlayerId);
   if (turnPlayer && !activeSockets.has(turnPlayer.id)) {
     sendPush(
+      turnPlayer.userId,
       turnPlayer.name,
       'Твой ход!',
       'Назови слово на «' + room.requiredLetter.toUpperCase() + '»',
@@ -634,12 +663,9 @@ io.on('connection', (socket) => {
     rooms.set(room.id, room);
 
     const playerName = uniqueName(room, data.playerName);
-    if (data.playerName) {
-      attachName(socket, data.playerName);
-      ensureUser(data.playerName);
-    }
-    room.players.push({ id: socket.id, name: playerName, alive: true });
-    players.set(socket.id, { id: socket.id, name: playerName, roomId: room.id });
+    const userId = socketName.get(socket.id) || (data.playerName ? nameKey(data.playerName) : socket.id);
+    room.players.push({ id: socket.id, userId, name: playerName, alive: true });
+    players.set(socket.id, { id: socket.id, userId, name: playerName, roomId: room.id });
     socket.join(room.id);
 
     if (typeof callback === 'function') callback({ ok: true, roomId: room.id });
@@ -668,12 +694,9 @@ io.on('connection', (socket) => {
     if (players.has(socket.id)) leaveRoom(socket);
 
     const playerName = uniqueName(room, data.playerName);
-    if (data.playerName) {
-      attachName(socket, data.playerName);
-      ensureUser(data.playerName);
-    }
-    room.players.push({ id: socket.id, name: playerName, alive: true });
-    players.set(socket.id, { id: socket.id, name: playerName, roomId: room.id });
+    const userId = socketName.get(socket.id) || (data.playerName ? nameKey(data.playerName) : socket.id);
+    room.players.push({ id: socket.id, userId, name: playerName, alive: true });
+    players.set(socket.id, { id: socket.id, userId, name: playerName, roomId: room.id });
     socket.join(room.id);
 
     if (typeof callback === 'function') callback({ ok: true, roomId: room.id });
@@ -711,23 +734,21 @@ io.on('connection', (socket) => {
   });
 
   socket.on('registerPush', (payload) => {
-    const name = normalize2(payload && payload.name);
+    const userId = normalize2(payload && payload.id) || socketName.get(socket.id);
     const token = payload && payload.token;
-    if (!name || !token) return;
-    const id = nameKey(name);
-    pushTokens.set(id, token);
+    if (!userId || !token) return;
+    pushTokens.set(userId, token);
     if (db) {
-      userRef(id).set({ token, name }, { merge: true }).catch(() => {});
+      userRef(userId).set({ token }, { merge: true }).catch(() => {});
     }
   });
 
   socket.on('unregisterPush', (payload) => {
-    const name = normalize2(payload && payload.name);
-    if (!name) return;
-    const id = nameKey(name);
-    pushTokens.delete(id);
+    const userId = normalize2(payload && payload.id) || socketName.get(socket.id);
+    if (!userId) return;
+    pushTokens.delete(userId);
     if (db && FieldValue) {
-      userRef(id)
+      userRef(userId)
         .set({ token: FieldValue.delete() }, { merge: true })
         .catch(() => {});
     }
@@ -741,18 +762,52 @@ io.on('connection', (socket) => {
 
   socket.on('login', async (payload) => {
     const name = normalize2(payload && payload.name);
-    if (!name) return;
-    attachName(socket, name);
-    await ensureUser(name);
-    const id = nameKey(name);
-    socket.emit('friendsUpdate', await buildFriendsPayload(id));
-    notifyFriendsPresence(id);
+    const userId = normalize2(payload && payload.id) || (name ? nameKey(name) : '');
+    if (!userId || !name) return;
+    attachUser(socket, userId);
+    await ensureUser(userId, name, payload && payload.avatarId);
+    socket.emit('friendsUpdate', await buildFriendsPayload(userId));
+    notifyFriendsPresence(userId);
   });
 
   socket.on('friendsRequest', async () => {
     const id = socketName.get(socket.id);
     if (!id) return;
     socket.emit('friendsUpdate', await buildFriendsPayload(id));
+  });
+
+  socket.on('userSearch', async (payload, callback) => {
+    const me = socketName.get(socket.id);
+    const query = normalize2(payload && payload.name);
+    const respond = (list) => {
+      if (typeof callback === 'function') callback({ ok: true, users: list });
+      socket.emit('userSearchResult', list);
+    };
+    if (!db) return respond([]);
+    if (query.length < 2) return respond([]);
+    try {
+      const snap = await db
+        .collection('users')
+        .where('nameLower', '==', nameKey(query))
+        .limit(20)
+        .get();
+      const list = [];
+      for (const doc of snap.docs) {
+        const d = doc.data() || {};
+        const id = doc.id;
+        if (id === me) continue;
+        list.push({
+          id,
+          name: d.name || id,
+          avatarId: d.avatarId || 0,
+          ...presenceFor(id),
+          ...getStats(d.name || id),
+        });
+      }
+      respond(list);
+    } catch (err) {
+      respond([]);
+    }
   });
 
   socket.on('friendRequest', async (payload, callback) => {
@@ -762,15 +817,20 @@ io.on('connection', (socket) => {
     };
     const me = socketName.get(socket.id);
     if (!me) return respond({ error: 'Сначала введи имя' });
-    const targetName = normalize2(payload && payload.name);
-    const toId = nameKey(targetName);
-    if (!targetName) return respond({ error: 'Введи имя игрока' });
+    let toId = normalize2(payload && payload.id);
+    let targetName = '';
+    if (!toId) {
+      targetName = normalize2(payload && payload.name);
+      toId = targetName ? nameKey(targetName) : '';
+    }
+    if (!toId) return respond({ error: 'Выбери игрока' });
     if (toId === me) return respond({ error: 'Это ты' });
     if (!db) return respond({ error: 'Друзья временно недоступны' });
     const toSnap = await userRef(toId).get();
     if (!toSnap.exists) {
       return respond({ error: 'Игрок не найден. Он должен зайти в игру хотя бы раз' });
     }
+    targetName = targetName || (toSnap.data() || {}).name || toId;
     const mine = await loadFriendData(me);
     if (mine.friends.includes(toId)) return respond({ error: 'Уже в друзьях' });
     if (mine.outgoing.includes(toId)) return respond({ error: 'Заявка уже отправлена' });
@@ -789,8 +849,12 @@ io.on('connection', (socket) => {
     await sendFriendsToId(toId);
     const targetSockets = nameSockets.get(toId);
     if (!targetSockets || !targetSockets.size) {
-      const fromName = normalize2(payload && payload.fromName) || (await namesFor([me]))[me];
-      sendPush(targetName, 'Заявка в друзья', fromName + ' хочет добавить тебя в друзья', {
+      let fromName = userName.get(me);
+      if (!fromName) {
+        const info = await userInfoFor([me]);
+        fromName = (info[me] || {}).name || me;
+      }
+      sendPush(toId, targetName, 'Заявка в друзья', fromName + ' хочет добавить тебя в друзья', {
         type: 'friendRequest',
       });
     }
@@ -803,8 +867,10 @@ io.on('connection', (socket) => {
     };
     const me = socketName.get(socket.id);
     if (!me) return respond({ error: 'Сначала введи имя' });
-    const otherId = nameKey(normalize2(payload && payload.name));
+    const otherId =
+      normalize2(payload && payload.id) || nameKey(normalize2(payload && payload.name));
     const accept = !!(payload && payload.accept);
+    if (!otherId) return respond({ error: 'Заявка не найдена' });
     if (!db) return respond({ error: 'Друзья временно недоступны' });
     const mine = await loadFriendData(me);
     if (!mine.incoming.includes(otherId)) return respond({ error: 'Заявка не найдена' });
@@ -826,7 +892,9 @@ io.on('connection', (socket) => {
     };
     const me = socketName.get(socket.id);
     if (!me) return respond({ error: 'Сначала введи имя' });
-    const otherId = nameKey(normalize2(payload && payload.name));
+    const otherId =
+      normalize2(payload && payload.id) || nameKey(normalize2(payload && payload.name));
+    if (!otherId) return respond({ error: 'Друг не найден' });
     if (!db) return respond({ error: 'Друзья временно недоступны' });
     await userRef(me).set({ friends: FieldValue.arrayRemove(otherId) }, { merge: true });
     await userRef(otherId).set({ friends: FieldValue.arrayRemove(me) }, { merge: true });
@@ -846,7 +914,12 @@ io.on('connection', (socket) => {
     if (!info) return respond({ error: 'Сначала создай комнату или зайди в неё' });
     const room = rooms.get(info.roomId);
     if (!room) return respond({ error: 'Комната не найдена' });
-    const toId = nameKey(normalize2(payload && payload.name));
+    let toId = normalize2(payload && payload.id);
+    if (!toId) {
+      const byName = normalize2(payload && payload.name);
+      toId = byName ? nameKey(byName) : '';
+    }
+    if (!toId) return respond({ error: 'Выбери друга' });
     if (!db) return respond({ error: 'Друзья временно недоступны' });
     const mine = await loadFriendData(me);
     if (!mine.friends.includes(toId)) return respond({ error: 'Звать можно только друзей' });
@@ -862,8 +935,9 @@ io.on('connection', (socket) => {
       respond({ ok: true, online: true });
       return;
     }
-    const invitedName = normalize2(payload && payload.name);
-    sendPush(invitedName, 'Приглашение в комнату', info.name + ' зовёт в «' + room.name + '»', {
+    const info2 = await userInfoFor([toId]);
+    const invitedName = (info2[toId] || {}).name || toId;
+    sendPush(toId, invitedName, 'Приглашение в комнату', info.name + ' зовёт в «' + room.name + '»', {
       type: 'invite',
       roomId: room.id,
       code: room.code || '',
@@ -912,7 +986,7 @@ io.on('connection', (socket) => {
     activeSockets.delete(socket.id);
     const nameId = socketName.get(socket.id);
     leaveRoom(socket);
-    detachName(socket);
+    detachUser(socket);
     if (nameId && !nameSockets.has(nameId)) notifyFriendsPresence(nameId);
   });
 });

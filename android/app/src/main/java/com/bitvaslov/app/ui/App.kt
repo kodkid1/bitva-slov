@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -86,6 +87,8 @@ fun App(vm: GameViewModel = viewModel()) {
     val state by vm.ui.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var bottomTab by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) { vm.autoConnect() }
 
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -223,7 +226,7 @@ private fun MenuTab(state: UiState, vm: GameViewModel) {
 
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                PlayerAvatar(state.myName.ifBlank { "И" }, size = 52.dp, color = AppColors.Secondary)
+                PlayerAvatar(state.myName.ifBlank { "И" }, size = 52.dp, color = AppColors.Secondary, avatarId = state.myAvatarId)
                 Spacer(Modifier.width(14.dp))
                 Column {
                     Text("Привет, ${state.myName.ifBlank { "Друг" }}!", style = MaterialTheme.typography.titleLarge, color = AppColors.TextPrimary)
@@ -276,7 +279,7 @@ private fun RoomsTab(state: UiState, vm: GameViewModel) {
 @Composable
 private fun FriendsTab(state: UiState, vm: GameViewModel) {
     LaunchedEffect(Unit) { vm.requestFriends() }
-    var newFriend by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf("") }
     val kb = LocalSoftwareKeyboardController.current
 
     LazyColumn(
@@ -284,14 +287,14 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item { AnimatedTitle(primary = "", highlight = "ДРУЗЬЯ", subtitle = "Зови друзей в игру") }
+        item { AnimatedTitle(primary = "", highlight = "ДРУЗЬЯ", subtitle = "Найди игрока по имени") }
 
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
-                    value = newFriend,
-                    onValueChange = { newFriend = it },
-                    label = { Text("Имя друга") },
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("Имя игрока") },
                     singleLine = true,
                     shape = RoundedCornerShape(18.dp),
                     modifier = Modifier.weight(1f),
@@ -299,35 +302,64 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                 Spacer(Modifier.width(10.dp))
                 IconButton(
                     onClick = {
-                        if (newFriend.isNotBlank()) {
+                        if (query.isNotBlank()) {
                             kb?.hide()
-                            vm.addFriend(newFriend)
-                            newFriend = ""
+                            vm.searchUser(query)
                         }
                     },
                 ) {
-                    Icon(Icons.Filled.PersonAdd, contentDescription = "Добавить", tint = AppColors.Primary)
+                    Icon(Icons.Filled.Search, contentDescription = "Найти", tint = AppColors.Primary)
+                }
+            }
+        }
+
+        if (state.searchResults.isNotEmpty()) {
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Найденные игроки", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { vm.clearSearch(); query = "" }) {
+                        Text("Сбросить", color = AppColors.TextSecondary)
+                    }
+                }
+            }
+            items(state.searchResults, key = { "s_${it.id}" }) { user ->
+                NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Secondary) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PlayerAvatar(user.name, size = 44.dp, avatarId = user.avatarId)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(user.name, color = AppColors.TextPrimary, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "${if (user.online) "в сети" else "не в сети"} • игр: ${user.games}, побед: ${user.wins}",
+                                color = if (user.online) AppColors.Primary else AppColors.TextSecondary,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        IconButton(onClick = { vm.addFriend(user.id) }) {
+                            Icon(Icons.Filled.PersonAdd, contentDescription = "Добавить", tint = AppColors.Primary)
+                        }
+                    }
                 }
             }
         }
 
         if (state.incomingRequests.isNotEmpty()) {
             item { Text("Заявки в друзья", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary) }
-            items(state.incomingRequests, key = { "in_$it" }) { friendName ->
+            items(state.incomingRequests, key = { "in_${it.id}" }) { req ->
                 NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Primary) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PlayerAvatar(friendName, size = 40.dp, color = AppColors.Secondary)
+                        PlayerAvatar(req.name, size = 40.dp, avatarId = req.avatarId)
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            friendName,
+                            req.name,
                             modifier = Modifier.weight(1f),
                             color = AppColors.TextPrimary,
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        IconButton(onClick = { vm.respondFriend(friendName, true) }) {
+                        IconButton(onClick = { vm.respondFriend(req.id, true) }) {
                             Icon(Icons.Filled.Check, contentDescription = "Принять", tint = AppColors.Primary)
                         }
-                        IconButton(onClick = { vm.respondFriend(friendName, false) }) {
+                        IconButton(onClick = { vm.respondFriend(req.id, false) }) {
                             Icon(Icons.Filled.Close, contentDescription = "Отклонить", tint = AppColors.Danger)
                         }
                     }
@@ -337,23 +369,28 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
 
         if (state.outgoingRequests.isNotEmpty()) {
             item { Text("Отправленные заявки", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary) }
-            items(state.outgoingRequests, key = { "out_$it" }) { friendName ->
-                Text("$friendName — ждём подтверждения", color = AppColors.TextSecondary)
+            items(state.outgoingRequests, key = { "out_${it.id}" }) { req ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PlayerAvatar(req.name, size = 28.dp, avatarId = req.avatarId)
+                    Spacer(Modifier.width(10.dp))
+                    Text("${req.name} — ждём подтверждения", color = AppColors.TextSecondary)
+                }
             }
         }
 
         item { Text("Мои друзья", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary) }
 
         if (state.friends.isEmpty()) {
-            item { Text("Пока никого. Добавь друга по имени выше.", color = AppColors.TextSecondary) }
+            item { Text("Пока никого. Найди друга по имени выше.", color = AppColors.TextSecondary) }
         } else {
-            items(state.friends, key = { "f_${it.name}" }) { friend ->
+            items(state.friends, key = { "f_${it.id}" }) { friend ->
                 NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Border) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         PlayerAvatar(
                             friend.name,
                             size = 44.dp,
                             color = if (friend.online) AppColors.Primary else AppColors.Border,
+                            avatarId = friend.avatarId,
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -375,11 +412,11 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                             Text(status, color = statusColor, style = MaterialTheme.typography.bodySmall)
                         }
                         if (friend.online) {
-                            IconButton(onClick = { vm.inviteFriend(friend.name) }) {
+                            IconButton(onClick = { vm.inviteFriend(friend.id) }) {
                                 Icon(Icons.Filled.GroupAdd, contentDescription = "Пригласить", tint = AppColors.Primary)
                             }
                         }
-                        IconButton(onClick = { vm.removeFriend(friend.name) }) {
+                        IconButton(onClick = { vm.removeFriend(friend.id) }) {
                             Icon(Icons.Filled.PersonRemove, contentDescription = "Удалить", tint = AppColors.TextSecondary)
                         }
                     }
@@ -395,37 +432,128 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
 private fun ProfileTab(state: UiState, vm: GameViewModel) {
     LaunchedEffect(Unit) { vm.loadStats() }
     val s = state.stats
-    Column(
-        Modifier.fillMaxSize().padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        PlayerAvatar(state.myName.ifBlank { "И" }, size = 96.dp, color = AppColors.Primary)
-        Spacer(Modifier.height(16.dp))
-        Text(state.myName.ifBlank { "Игрок" }, style = MaterialTheme.typography.headlineSmall, color = AppColors.TextPrimary)
-        Spacer(Modifier.height(24.dp))
+    var editing by remember { mutableStateOf(false) }
+    var nameDraft by remember { mutableStateOf(state.myName) }
+    val kb = LocalSoftwareKeyboardController.current
 
-        NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Border) {
-            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Статистика", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    StatChip("Игр: ${s?.games ?: 0}", modifier = Modifier.weight(1f), active = true)
-                    StatChip("Побед: ${s?.wins ?: 0}", modifier = Modifier.weight(1f), active = true)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    StatChip("Винрейт: ${s?.winRate ?: 0}%", modifier = Modifier.weight(1f), active = true)
-                    StatChip("Поражений: ${s?.losses ?: 0}", modifier = Modifier.weight(1f), active = true)
-                }
-                Spacer(Modifier.height(4.dp))
-                Text("Победная серия", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    StatChip("Текущий: ${s?.currentStreak ?: 0}", modifier = Modifier.weight(1f), color = AppColors.Secondary)
-                    StatChip("Рекорд: ${s?.bestStreak ?: 0}", modifier = Modifier.weight(1f), color = AppColors.Warning)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                PlayerAvatar(state.myName.ifBlank { "И" }, size = 96.dp, avatarId = state.myAvatarId)
+                Spacer(Modifier.height(12.dp))
+                if (editing) {
+                    OutlinedTextField(
+                        value = nameDraft,
+                        onValueChange = { nameDraft = it },
+                        label = { Text("Имя") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(onClick = { editing = false }) { Text("Отмена") }
+                        NeonButton(
+                            text = "СОХРАНИТЬ",
+                            onClick = {
+                                kb?.hide()
+                                vm.setMyName(nameDraft)
+                                editing = false
+                            },
+                            enabled = nameDraft.isNotBlank(),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(state.myName.ifBlank { "Игрок" }, style = MaterialTheme.typography.headlineSmall, color = AppColors.TextPrimary)
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(onClick = { nameDraft = state.myName; editing = true }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Изменить имя", tint = AppColors.Primary)
+                        }
+                    }
                 }
             }
         }
-        Spacer(Modifier.height(40.dp))
-        Text("Счётчики обновляются после игры", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
+
+        item {
+            NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Border) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Аватар", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary)
+                    Text("Выбери цвет — по нему тебя отличат тёзки", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
+                    AvatarPicker(selected = state.myAvatarId, onSelect = vm::setAvatar)
+                }
+            }
+        }
+
+        item {
+            NeonCard(Modifier.fillMaxWidth(), borderColor = AppColors.Border) {
+                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Статистика", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        StatChip("Игр: ${s?.games ?: 0}", modifier = Modifier.weight(1f), active = true)
+                        StatChip("Побед: ${s?.wins ?: 0}", modifier = Modifier.weight(1f), active = true)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        StatChip("Винрейт: ${s?.winRate ?: 0}%", modifier = Modifier.weight(1f), active = true)
+                        StatChip("Поражений: ${s?.losses ?: 0}", modifier = Modifier.weight(1f), active = true)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text("Победная серия", style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        StatChip("Текущий: ${s?.currentStreak ?: 0}", modifier = Modifier.weight(1f), color = AppColors.Secondary)
+                        StatChip("Рекорд: ${s?.bestStreak ?: 0}", modifier = Modifier.weight(1f), color = AppColors.Warning)
+                    }
+                }
+            }
+        }
+
+        item {
+            Text("Счётчики обновляются после игры", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
+        }
+    }
+}
+
+@Composable
+private fun AvatarPicker(selected: Int, onSelect: (Int) -> Unit) {
+    val rows = 3
+    val perRow = 4
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        for (r in 0 until rows) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                for (c in 0 until perRow) {
+                    val id = r * perRow + c
+                    val isSelected = id == selected
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .size(54.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(avatarColor(id))
+                            .border(
+                                width = if (isSelected) 3.dp else 1.dp,
+                                color = if (isSelected) Color.White else Color.Transparent,
+                                shape = androidx.compose.foundation.shape.CircleShape,
+                            )
+                            .clickable { onSelect(id) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            (id + 1).toString(),
+                            color = AppColors.ContentDark,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -885,14 +1013,14 @@ private fun RoomScreen(state: UiState, vm: GameViewModel) {
                 } else {
                     onlineFriends.forEach { friend ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            PlayerAvatar(friend.name, size = 32.dp, color = AppColors.Primary)
+                            PlayerAvatar(friend.name, size = 32.dp, color = AppColors.Primary, avatarId = friend.avatarId)
                             Spacer(Modifier.width(10.dp))
                             Text(
                                 friend.name,
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.titleSmall,
                             )
-                            IconButton(onClick = { vm.inviteFriend(friend.name) }) {
+                            IconButton(onClick = { vm.inviteFriend(friend.id) }) {
                                 Icon(Icons.Filled.GroupAdd, contentDescription = "Пригласить", tint = AppColors.Primary)
                             }
                         }

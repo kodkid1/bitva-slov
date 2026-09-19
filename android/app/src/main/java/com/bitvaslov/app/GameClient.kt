@@ -67,49 +67,54 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         socket?.emit("statsRequest", JSONObject().put("name", name), callback("_ack_stats"))
     }
 
-    fun registerPush(name: String, token: String) {
+    fun registerPush(id: String, token: String) {
         val o = JSONObject()
-        o.put("name", name)
+        o.put("id", id)
         o.put("token", token)
         socket?.emit("registerPush", o)
     }
 
-    fun unregisterPush(name: String) {
-        socket?.emit("unregisterPush", JSONObject().put("name", name))
+    fun unregisterPush(id: String) {
+        socket?.emit("unregisterPush", JSONObject().put("id", id))
     }
 
     fun setActive(active: Boolean) {
         socket?.emit("setActive", JSONObject().put("active", active))
     }
 
-    fun login(name: String) {
-        socket?.emit("login", JSONObject().put("name", name))
+    fun login(id: String, name: String, avatarId: Int) {
+        val o = JSONObject()
+        o.put("id", id)
+        o.put("name", name)
+        o.put("avatarId", avatarId)
+        socket?.emit("login", o)
     }
 
     fun requestFriends() {
         socket?.emit("friendsRequest")
     }
 
-    fun sendFriendRequest(name: String, fromName: String) {
-        val o = JSONObject()
-        o.put("name", name)
-        o.put("fromName", fromName)
-        socket?.emit("friendRequest", o, callback("_ack_friend"))
+    fun searchUser(name: String) {
+        socket?.emit("userSearch", JSONObject().put("name", name), callback("_ack_search"))
     }
 
-    fun respondFriendRequest(name: String, accept: Boolean) {
+    fun sendFriendRequest(id: String) {
+        socket?.emit("friendRequest", JSONObject().put("id", id), callback("_ack_friend"))
+    }
+
+    fun respondFriendRequest(id: String, accept: Boolean) {
         val o = JSONObject()
-        o.put("name", name)
+        o.put("id", id)
         o.put("accept", accept)
         socket?.emit("friendRespond", o, callback("_ack_friend"))
     }
 
-    fun removeFriend(name: String) {
-        socket?.emit("removeFriend", JSONObject().put("name", name), callback("_ack_friend"))
+    fun removeFriend(id: String) {
+        socket?.emit("removeFriend", JSONObject().put("id", id), callback("_ack_friend"))
     }
 
-    fun inviteFriend(name: String) {
-        socket?.emit("inviteFriend", JSONObject().put("name", name), callback("_ack_invite"))
+    fun inviteFriend(id: String) {
+        socket?.emit("inviteFriend", JSONObject().put("id", id), callback("_ack_invite"))
     }
 
     private fun callback(tag: String): io.socket.client.Ack {
@@ -177,6 +182,10 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
 
         s.on("roomInvite") { args ->
             onEvent("roomInvite", args.firstOrNull() as? JSONObject)
+        }
+
+        s.on("userSearchResult") { args ->
+            onEvent("userSearchResult", args.firstOrNull() as? JSONArray)
         }
     }
 }

@@ -182,13 +182,38 @@ fun Logo(letter: String = "Б", size: Dp = 72.dp, glow: Boolean = false) {
     }
 }
 
+val AvatarColors = listOf(
+    Color(0xFF7C4DFF),
+    Color(0xFF00E5FF),
+    Color(0xFFFF3D00),
+    Color(0xFF00E676),
+    Color(0xFFFFD600),
+    Color(0xFFFF4081),
+    Color(0xFF2979FF),
+    Color(0xFFFF9100),
+    Color(0xFF00BFA5),
+    Color(0xFFD500F9),
+    Color(0xFF64DD17),
+    Color(0xFFF50057),
+)
+
+fun avatarColor(id: Int): Color =
+    AvatarColors[((id % AvatarColors.size) + AvatarColors.size) % AvatarColors.size]
+
 @Composable
-fun PlayerAvatar(name: String, size: Dp = 40.dp, color: Color = AppColors.Primary, active: Boolean = true) {
+fun PlayerAvatar(
+    name: String,
+    size: Dp = 40.dp,
+    color: Color = AppColors.Primary,
+    active: Boolean = true,
+    avatarId: Int = -1,
+) {
+    val base = if (avatarId >= 0) avatarColor(avatarId) else color
     Box(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(if (active) color else AppColors.SurfaceElevated.copy(alpha = 0.6f)),
+            .background(if (active) base else AppColors.SurfaceElevated.copy(alpha = 0.6f)),
         contentAlignment = Alignment.Center,
     ) {
         Text(

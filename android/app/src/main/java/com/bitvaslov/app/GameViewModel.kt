@@ -28,8 +28,16 @@ class GameViewModel : ViewModel() {
     private var roomListJob: kotlinx.coroutines.Job? = null
     private var _isActive = true
     private var lastCreateAt = 0L
+    private var autoStarted = false
 
     init {
+        _ui.update {
+            it.copy(
+                myId = ProfileStore.playerId,
+                myName = ProfileStore.name,
+                myAvatarId = ProfileStore.avatarId,
+            )
+        }
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
@@ -39,6 +47,14 @@ class GameViewModel : ViewModel() {
         com.google.firebase.messaging.FirebaseMessaging.getInstance()
             .subscribeToTopic("all")
             .addOnCompleteListener { }
+    }
+
+    fun autoConnect() {
+        if (autoStarted) return
+        autoStarted = true
+        if (ProfileStore.hasProfile) {
+            connect(_ui.value.serverUrl, ProfileStore.name)
+        }
     }
 
     fun connect(url: String, name: String) {
@@ -59,7 +75,17 @@ class GameViewModel : ViewModel() {
     }
 
     fun setServerUrl(url: String) = _ui.update { it.copy(serverUrl = url) }
-    fun setMyName(name: String) = _ui.update { it.copy(myName = name) }
+
+    fun setMyName(name: String) {
+        _ui.update { it.copy(myName = name) }
+        ProfileStore.saveName(name)
+    }
+
+    fun setAvatar(id: Int) {
+        ProfileStore.saveAvatar(id)
+        _ui.update { it.copy(myAvatarId = ProfileStore.avatarId) }
+        client?.login(_ui.value.myId, _ui.value.myName.trim(), ProfileStore.avatarId)
+    }
 
     fun requestCreateRoom() = _ui.update { it.copy(screen = Screen.CREATEROOM) }
     fun dismissCreateRoom() = _ui.update { it.copy(screen = Screen.LOBBY) }
@@ -137,28 +163,30 @@ class GameViewModel : ViewModel() {
 
     private fun sendPushToken() {
         if (!_ui.value.notificationsOn) return
-        val name = _ui.value.myName.trim()
+        val id = _ui.value.myId
         val token = PushTokenStore.current ?: return
-        if (name.isBlank()) return
-        client?.registerPush(name, token)
+        if (id.isBlank()) return
+        client?.registerPush(id, token)
     }
 
     private fun syncPush() {
-        val name = _ui.value.myName.trim()
-        if (name.isBlank()) return
+        val id = _ui.value.myId
+        if (id.isBlank()) return
         if (_ui.value.notificationsOn) {
             val token = PushTokenStore.current ?: return
-            client?.registerPush(name, token)
+            client?.registerPush(id, token)
         } else {
-            client?.unregisterPush(name)
+            client?.unregisterPush(id)
         }
     }
 
     fun requestFriends() = client?.requestFriends()
-    fun addFriend(name: String) = client?.sendFriendRequest(name.trim(), _ui.value.myName.trim())
-    fun respondFriend(name: String, accept: Boolean) = client?.respondFriendRequest(name, accept)
-    fun removeFriend(name: String) = client?.removeFriend(name)
-    fun inviteFriend(name: String) = client?.inviteFriend(name)
+    fun searchUser(name: String) = client?.searchUser(name.trim())
+    fun clearSearch() = _ui.update { it.copy(searchResults = emptyList()) }
+    fun addFriend(id: String) = client?.sendFriendRequest(id)
+    fun respondFriend(id: String, accept: Boolean) = client?.respondFriendRequest(id, accept)
+    fun removeFriend(id: String) = client?.removeFriend(id)
+    fun inviteFriend(id: String) = client?.inviteFriend(id)
 
     fun acceptInvite() {
         val invite = _ui.value.incomingInvite ?: return
@@ -184,7 +212,7 @@ class GameViewModel : ViewModel() {
                     }
                     sendPushToken()
                     client?.setActive(_isActive)
-                    client?.login(_ui.value.myName.trim())
+                    client?.login(_ui.value.myId, _ui.value.myName.trim(), _ui.value.myAvatarId)
                     client?.requestFriends()
                     if (DeepLink.hasInvite) {
                         val roomId = DeepLink.roomId
@@ -296,31 +324,33 @@ class GameViewModel : ViewModel() {
                     val inArr = o.optJSONArray("incoming") ?: JSONArray()
                     val outArr = o.optJSONArray("outgoing") ?: JSONArray()
                     val friends = (0 until fArr.length()).map { Friend.fromJson(fArr.getJSONObject(it)) }
-                    val incoming = (0 until inArr.length()).map { inArr.getJSONObject(it).optString("name", "") }
-                    val outgoing = (0 until outArr.length()).map { outArr.getJSONObject(it).optString("name", "") }
+                    val incoming = (0 until inArr.length()).map { FriendRef.fromJson(inArr.getJSONObject(it)) }
+                    val outgoing = (0 until outArr.length()).map { FriendRef.fromJson(outArr.getJSONObject(it)) }
                     _ui.update {
                         it.copy(
-                            friends = friends.filter { f -> f.name.isNotBlank() },
-                            incomingRequests = incoming.filter { n -> n.isNotBlank() },
-                            outgoingRequests = outgoing.filter { n -> n.isNotBlank() },
+                            friends = friends.filter { f -> f.id.isNotBlank() },
+                            incomingRequests = incoming.filter { r -> r.id.isNotBlank() },
+                            outgoingRequests = outgoing.filter { r -> r.id.isNotBlank() },
                         )
                     }
                 }
 
                 "friendPresence" -> {
                     val o = data as? JSONObject ?: return@launch
-                    val friendName = o.optString("name", "")
+                    val friendId = o.optString("id", "")
                     val online = o.optBoolean("online", false)
                     val inGame = o.optBoolean("inGame", false)
                     _ui.update { s ->
                         s.copy(friends = s.friends.map {
-                            if (it.name.equals(friendName, ignoreCase = true)) {
-                                it.copy(online = online, inGame = inGame)
-                            } else {
-                                it
-                            }
+                            if (it.id == friendId) it.copy(online = online, inGame = inGame) else it
                         })
                     }
+                }
+
+                "userSearchResult" -> {
+                    val arr = data as? JSONArray ?: return@launch
+                    val list = (0 until arr.length()).map { UserSummary.fromJson(arr.getJSONObject(it)) }
+                    _ui.update { it.copy(searchResults = list) }
                 }
 
                 "roomInvite" -> {
@@ -361,15 +391,18 @@ class GameViewModel : ViewModel() {
 data class UiState(
     val screen: Screen = Screen.CONNECT,
     val serverUrl: String = "https://bitva-slov.onrender.com",
+    val myId: String = "",
     val myName: String = "",
+    val myAvatarId: Int = 0,
     val rooms: List<RoomSummary> = emptyList(),
     val room: RoomState? = null,
     val game: GameState? = null,
     val winner: WinnerInfo? = null,
     val stats: PlayerStats? = null,
     val friends: List<Friend> = emptyList(),
-    val incomingRequests: List<String> = emptyList(),
-    val outgoingRequests: List<String> = emptyList(),
+    val incomingRequests: List<FriendRef> = emptyList(),
+    val outgoingRequests: List<FriendRef> = emptyList(),
+    val searchResults: List<UserSummary> = emptyList(),
     val incomingInvite: RoomInvite? = null,
     val error: String? = null,
     val toast: String? = null,
