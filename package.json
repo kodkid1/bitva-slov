@@ -8,6 +8,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@google-cloud/firestore": "^9.2.0",
     "express": "^5.2.1",
     "firebase-admin": "^14.4.0",
     "russian-words": "^1.0.1",

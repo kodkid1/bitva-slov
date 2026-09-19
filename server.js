@@ -42,11 +42,10 @@ let messaging = null;
 let db = null;
 let FieldValue = null;
 let firestoreLib = null;
+let firebaseReady = false;
 try {
   const { initializeApp, cert } = require('firebase-admin/app');
   const { getMessaging } = require('firebase-admin/messaging');
-  firestoreLib = require('firebase-admin/firestore');
-  FieldValue = firestoreLib.FieldValue;
   let serviceAccount = null;
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -59,11 +58,7 @@ try {
   if (serviceAccount) {
     initializeApp({ credential: cert(serviceAccount) });
     messaging = getMessaging();
-    try {
-      db = firestoreLib.getFirestore();
-    } catch (err) {
-      console.warn('Firestore сразу не поднялся:', err.message);
-    }
+    firebaseReady = true;
     console.log('Firebase подключён, пуши включены');
   } else {
     console.log('Firebase не настроен, пуши отключены');
@@ -72,15 +67,22 @@ try {
   console.warn('Firebase недоступен, пуши отключены:', err.message);
 }
 
-setInterval(() => {
-  if (db || !firestoreLib) return;
+function initFirestore() {
+  if (db || !firebaseReady) return;
   try {
+    if (!firestoreLib) {
+      firestoreLib = require('firebase-admin/firestore');
+      FieldValue = firestoreLib.FieldValue;
+    }
     db = firestoreLib.getFirestore();
-    console.log('Firestore подключён (повторная попытка)');
+    console.log('Firestore подключён');
   } catch (err) {
-    /* подождём следующей попытки */
+    console.warn('Firestore недоступен:', err.message);
   }
-}, 30000);
+}
+
+initFirestore();
+setInterval(initFirestore, 30000);
 
 function nameKey(name) {
   return normalize2(name).toLowerCase();
