@@ -15,6 +15,16 @@ const io = new Server(server, {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/api/status', (req, res) => {
+  res.json({
+    firebase: !!messaging,
+    firestore: !!db,
+    pushTokens: pushTokens.size,
+    rooms: rooms.size,
+    players: players.size,
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 
 process.on('unhandledRejection', (err) => {
