@@ -31,11 +31,12 @@ const activeSockets = new Set();
 let messaging = null;
 let db = null;
 let FieldValue = null;
+let firestoreLib = null;
 try {
   const { initializeApp, cert } = require('firebase-admin/app');
   const { getMessaging } = require('firebase-admin/messaging');
-  const firestore = require('firebase-admin/firestore');
-  FieldValue = firestore.FieldValue;
+  firestoreLib = require('firebase-admin/firestore');
+  FieldValue = firestoreLib.FieldValue;
   let serviceAccount = null;
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -48,7 +49,11 @@ try {
   if (serviceAccount) {
     initializeApp({ credential: cert(serviceAccount) });
     messaging = getMessaging();
-    db = firestore.getFirestore();
+    try {
+      db = firestoreLib.getFirestore();
+    } catch (err) {
+      console.warn('Firestore сразу не поднялся:', err.message);
+    }
     console.log('Firebase подключён, пуши включены');
   } else {
     console.log('Firebase не настроен, пуши отключены');
@@ -56,6 +61,16 @@ try {
 } catch (err) {
   console.warn('Firebase недоступен, пуши отключены:', err.message);
 }
+
+setInterval(() => {
+  if (db || !firestoreLib) return;
+  try {
+    db = firestoreLib.getFirestore();
+    console.log('Firestore подключён (повторная попытка)');
+  } catch (err) {
+    /* подождём следующей попытки */
+  }
+}, 30000);
 
 function nameKey(name) {
   return normalize2(name).toLowerCase();
