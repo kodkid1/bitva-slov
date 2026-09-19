@@ -26,7 +26,8 @@ const activeSockets = new Set();
 
 let messaging = null;
 try {
-  const admin = require('firebase-admin');
+  const { initializeApp, cert } = require('firebase-admin/app');
+  const { getMessaging } = require('firebase-admin/messaging');
   let serviceAccount = null;
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -37,8 +38,8 @@ try {
     }
   }
   if (serviceAccount) {
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-    messaging = admin.messaging();
+    initializeApp({ credential: cert(serviceAccount) });
+    messaging = getMessaging();
     console.log('Firebase подключён, пуши включены');
   } else {
     console.log('Firebase не настроен, пуши отключены');
