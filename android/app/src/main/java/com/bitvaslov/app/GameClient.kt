@@ -147,6 +147,10 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         socket?.emit("friendRespond", o, callback("_ack_friend"))
     }
 
+    fun cancelFriendRequest(id: String) {
+        socket?.emit("cancelFriendRequest", JSONObject().put("id", id), callback("_ack_friend"))
+    }
+
     fun removeFriend(id: String) {
         socket?.emit("removeFriend", JSONObject().put("id", id), callback("_ack_friend"))
     }

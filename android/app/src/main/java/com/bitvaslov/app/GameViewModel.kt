@@ -227,6 +227,7 @@ class GameViewModel : ViewModel() {
     fun clearSearch() = _ui.update { it.copy(searchResults = emptyList()) }
     fun addFriend(id: String) = client?.sendFriendRequest(id)
     fun respondFriend(id: String, accept: Boolean) = client?.respondFriendRequest(id, accept)
+    fun cancelFriendRequest(id: String) = client?.cancelFriendRequest(id)
     fun removeFriend(id: String) = client?.removeFriend(id)
     fun inviteFriend(id: String) = client?.inviteFriend(id)
 

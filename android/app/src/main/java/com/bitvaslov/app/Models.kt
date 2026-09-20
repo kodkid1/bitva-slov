@@ -39,6 +39,8 @@ data class FriendRef(
     val name: String,
     val avatarId: Int = 0,
     val photo: String = "",
+    val games: Int = 0,
+    val wins: Int = 0,
 ) {
     companion object {
         fun fromJson(o: JSONObject) = FriendRef(
@@ -46,6 +48,8 @@ data class FriendRef(
             name = o.optString("name", ""),
             avatarId = o.optInt("avatarId", 0),
             photo = o.optString("photo", ""),
+            games = o.optInt("games", 0),
+            wins = o.optInt("wins", 0),
         )
     }
 }

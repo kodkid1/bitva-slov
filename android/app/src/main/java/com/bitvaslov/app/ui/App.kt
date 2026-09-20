@@ -5,10 +5,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,9 +20,11 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,11 +39,11 @@ private fun encodeAvatar(context: android.content.Context, uri: android.net.Uri)
         val original = android.graphics.BitmapFactory.decodeStream(input)
         input.close()
         if (original == null) return null
-        val maxSide = 160f
+        val maxSide = 512f
         val scale = minOf(maxSide / original.width, maxSide / original.height, 1f)
         val scaled = android.graphics.Bitmap.createScaledBitmap(original, (original.width * scale).toInt(), (original.height * scale).toInt(), true)
         val out = java.io.ByteArrayOutputStream()
-        scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
+        scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
         android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
     } catch (e: Exception) { null }
 }
@@ -54,13 +59,12 @@ fun App(vm: GameViewModel = viewModel()) {
     Scaffold(
         containerColor = AppColors.Background,
         snackbarHost = { SnackbarHost(snackbar) },
-        bottomBar = { if (state.screen == Screen.LOBBY) MainBottomBar(bottomTab) { bottomTab = it; if(it==2) vm.requestFriends() } }
     ) { padding ->
         AppBackground {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 when (state.screen) {
                     Screen.CONNECT -> ConnectScreen(state, vm)
-                    Screen.LOBBY -> LobbyScreen(state, vm, bottomTab)
+                    Screen.LOBBY -> LobbyScreen(state, vm, bottomTab, onSelectTab = { bottomTab = it })
                     Screen.CREATEROOM -> CreateRoomScreen(state, vm)
                     Screen.CODEENTRY -> CodeEntryScreen(state, vm)
                     Screen.SETTINGS -> SettingsScreen(state, vm)
@@ -100,40 +104,170 @@ private fun ConnectScreen(state: UiState, vm: GameViewModel) {
 }
 
 @Composable
-private fun LobbyScreen(state: UiState, vm: GameViewModel, tab: Int) {
-    when (tab) {
-        1 -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            item { AnimatedTitle("", "КОМНАТЫ", "Присоединяйся к игре") }
-            roomsItems(state, vm)
+private fun LobbyScreen(state: UiState, vm: GameViewModel, tab: Int, onSelectTab: (Int) -> Unit) {
+    Box(Modifier.fillMaxSize()) {
+        when (tab) {
+            1 -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 130.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                item { AnimatedTitle("", "КОМНАТЫ", "Присоединяйся к игре") }
+                roomsItems(state, vm)
+            }
+            2 -> FriendsTab(state, vm)
+            3 -> ProfileTab(state, vm)
+            else -> MenuTab(state, vm, onSelectTab)
         }
-        2 -> FriendsTab(state, vm)
-        3 -> ProfileTab(state, vm)
-        else -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Битва слов", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary)
-                    Spacer(Modifier.weight(1f))
-                    IconButton(onClick = { vm.toggleSettings() }) { Icon(Icons.Filled.Settings, null, tint = Color.White) }
+        MainBottomBar(
+            selected = tab,
+            onSelect = { onSelectTab(it); if (it == 2) vm.requestFriends() },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+}
+
+private val TopBarShape = RoundedCornerShape(30.dp)
+private val TopBarColor = Color(0xFF21242B)
+private val TopBarInnerColor = Color(0xFF191C22)
+
+@Composable
+private fun TopBar(
+    onProfile: () -> Unit,
+    onSettings: () -> Unit,
+    myName: String = "",
+    myAvatarId: Int = 0,
+    myPhoto: String = "",
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .height(60.dp)
+            .clip(TopBarShape)
+            .background(TopBarColor),
+    ) {
+        Text(
+            "Меню",
+            fontSize = 22.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = Color.White,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 24.dp),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 6.dp)
+                .height(48.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(TopBarInnerColor),
+        ) {
+            Row(Modifier.padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onProfile),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PlayerAvatar(myName, 42.dp, avatarId = myAvatarId, photo = myPhoto)
                 }
             }
-            item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    PlayerAvatar(state.myName.ifBlank { "И" }, size = 52.dp, avatarId = state.myAvatarId, photo = state.myPhoto)
-                    Column(Modifier.padding(start = 14.dp)) {
-                        Text("Привет, ${state.myName}!", style = MaterialTheme.typography.titleLarge)
-                        Text("Удачи в бою!", style = MaterialTheme.typography.bodySmall, color = AppColors.TextSecondary)
+        }
+    }
+}
+
+@Composable
+private fun MenuTab(state: UiState, vm: GameViewModel, onSelectTab: (Int) -> Unit) {
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 20.dp, end = 20.dp, top = 96.dp, bottom = 130.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { vm.requestCodeEntry() },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF0A0C10),
+                        contentColor = Color.White,
+                    ),
+                    border = BorderStroke(1.dp, Color(0xFF3A4050)),
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .fillMaxWidth()
+                        .height(72.dp),
+                ) {
+                    Text("Войти по коду", fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Button(
+                        onClick = { vm.requestCreateRoom() },
+                        shape = RoundedCornerShape(20.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF0D0F14),
+                            contentColor = Color(0xFFB4BCCC),
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth(0.78f)
+                            .height(64.dp),
+                    ) {
+                        Text("Создать комнату", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    ActionButton(Icons.Filled.Add, "Создать", vm::requestCreateRoom, Modifier.weight(1f), AppColors.Primary)
-                    ActionButton(Icons.Filled.Lock, "По коду", vm::requestCodeEntry, Modifier.weight(1f), AppColors.Secondary)
+            Spacer(Modifier.height(16.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF0A0C10))
+                    .padding(top = 14.dp, bottom = 10.dp),
+            ) {
+                Text(
+                    "Открытые комнаты",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    textAlign = TextAlign.Center,
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(10.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .height(2.dp)
+                        .background(Color(0xFF2E323C))
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    roomsItems(state, vm)
                 }
             }
-            item { Text("Открытые игры", style = MaterialTheme.typography.titleLarge) }
-            roomsItems(state, vm)
         }
+
+        TopBar(
+            onProfile = { onSelectTab(3) },
+            onSettings = { vm.toggleSettings() },
+            myName = state.myName,
+            myAvatarId = state.myAvatarId,
+            myPhoto = state.myPhoto,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 }
 
@@ -141,38 +275,311 @@ private fun LobbyScreen(state: UiState, vm: GameViewModel, tab: Int) {
 private fun FriendsTab(state: UiState, vm: GameViewModel) {
     var query by remember { mutableStateOf("") }
     val kb = LocalSoftwareKeyboardController.current
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { AnimatedTitle("", "ДРУЗЬЯ", "Найди своих") }
+    // Цвета как в меню
+    val plaque = Color(0xFF21242B)
+    val circle = Color(0xFF3A4050)
+    val plusLighter = Color(0xFF9AA2B5)
+    val offlineGray = Color(0xFF9AA2B5)
+    val divider = Color(0xFF2E323C)
+    val green = Color(0xFF2ECC71)
+    val red = Color(0xFFE74C3C)
+    val plaqueDark = Color(0xFF0D0F14)
+
+    // Онлайн друзья сверху, офлайн ниже
+    val sortedFriends = remember(state.friends) {
+        state.friends.sortedByDescending { it.online }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 130.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        // --- Плашка поиска: полукруглые концы, как в меню по размеру ---
         item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(query, {query=it}, label={Text("Поиск")}, singleLine=true, shape=RoundedCornerShape(18.dp), modifier=Modifier.weight(1f))
-                IconButton({ if(query.isNotBlank()){ kb?.hide(); vm.searchUser(query) } }) { Icon(Icons.Filled.Search, null, tint=AppColors.Primary) }
-            }
-        }
-        if(state.searchResults.isNotEmpty()){
-            item { Text("Результаты поиска") }
-            items(state.searchResults) { user ->
-                NeonCard(Modifier.fillMaxWidth(), AppColors.Secondary) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PlayerAvatar(user.name, 44.dp, avatarId=user.avatarId, photo=user.photo)
-                        Column(Modifier.weight(1f).padding(start=12.dp)) {
-                            Text(user.name, color=AppColors.TextPrimary); Text(if(user.online)"в сети" else "не в сети", style=MaterialTheme.typography.bodySmall, color=if(user.online)AppColors.Primary else AppColors.TextSecondary)
-                        }
-                        IconButton({ vm.addFriend(user.id) }) { Icon(Icons.Filled.PersonAdd, null, tint=AppColors.Primary) }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp)
+                    .clip(RoundedCornerShape(36.dp))
+                    .background(plaque),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    modifier = Modifier.padding(start = 22.dp, end = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BasicTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        textStyle = TextStyle(color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold),
+                        decorationBox = { inner ->
+                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+                                if (query.isEmpty()) Text("Поиск", color = Color(0xFFE4E8F0), fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+                                inner()
+                            }
+                        },
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    // Серый кружок с плюсиком чуть светлее
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(circle)
+                            .clickable {
+                                kb?.hide()
+                                if (query.isNotBlank()) vm.searchUser(query)
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = "Искать",
+                            tint = plusLighter,
+                            modifier = Modifier.size(26.dp),
+                        )
                     }
                 }
             }
         }
-        item { Text("Мои друзья", style = MaterialTheme.typography.titleMedium) }
-        items(state.friends) { f ->
-            NeonCard(Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PlayerAvatar(f.name, 44.dp, avatarId=f.avatarId, photo=f.photo)
-                    Column(Modifier.weight(1f).padding(start=12.dp)) {
-                        Text(f.name); Text(if(f.online)"онлайн" else "оффлайн", color=if(f.online)AppColors.Primary else AppColors.TextSecondary, style=MaterialTheme.typography.bodySmall)
+
+        // --- Результаты поиска ---
+        if (state.searchResults.isNotEmpty()) {
+            item { Text("Результаты поиска", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+            items(state.searchResults, key = { it.id }) { user ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(plaque)
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PlayerAvatar(user.name, 48.dp, avatarId = user.avatarId, photo = user.photo)
+                    Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                        Text(user.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (user.online) "в сети" else "не в сети",
+                            fontSize = 15.sp,
+                            color = if (user.online) Color.White else offlineGray,
+                        )
                     }
-                    if(f.online) IconButton({ vm.inviteFriend(f.id) }) { Icon(Icons.Filled.GroupAdd, null, tint=AppColors.Primary) }
-                    IconButton({ vm.removeFriend(f.id) }) { Icon(Icons.Filled.PersonRemove, null, tint=AppColors.TextSecondary) }
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(circle)
+                            .clickable { vm.addFriend(user.id) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = "Добавить", tint = plusLighter, modifier = Modifier.size(26.dp))
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(2.dp)) }
+        }
+
+        // --- Блок «Мои друзья» ---
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(plaque)
+                    .padding(vertical = 16.dp),
+            ) {
+                Text(
+                    "Мои друзья",
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    textAlign = TextAlign.Center,
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(12.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .height(2.dp)
+                        .background(divider)
+                )
+                Spacer(Modifier.height(10.dp))
+                if (sortedFriends.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 28.dp), Alignment.Center) {
+                        Text("Пока пусто...", color = offlineGray, fontSize = 16.sp)
+                    }
+                } else {
+                    sortedFriends.forEach { f ->
+                        // Строка друга: фото | имя/статус | плашка [плюс | стрелка вправо]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            PlayerAvatar(f.name, 48.dp, avatarId = f.avatarId, photo = f.photo)
+                            Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                                Text(f.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    if (f.online) "в сети" else "офлайн",
+                                    fontSize = 15.sp,
+                                    color = if (f.online) Color.White else offlineGray,
+                                )
+                            }
+                            // Две отдельные плашки: плюс (пригласить) | стрелка вправо (профиль), со спейсером
+                            // Плюс: слева полукруг, справа стена. Стрелка: зеркально.
+                            Row(
+                                modifier = Modifier.height(48.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(48.dp)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(24.dp, 0.dp, 0.dp, 24.dp))
+                                        .background(if (f.online) plaqueDark else plaqueDark.copy(alpha = 0.55f))
+                                        .border(1.dp, if (f.online) circle else circle.copy(alpha = 0.45f), RoundedCornerShape(24.dp, 0.dp, 0.dp, 24.dp))
+                                        .clickable(enabled = f.online) { vm.inviteFriend(f.id) },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(Icons.Filled.Add, contentDescription = "Пригласить", tint = if (f.online) Color.White else offlineGray.copy(alpha = 0.55f), modifier = Modifier.size(26.dp))
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(48.dp)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(0.dp, 24.dp, 24.dp, 0.dp))
+                                        .background(plaqueDark)
+                                        .border(1.dp, circle, RoundedCornerShape(0.dp, 24.dp, 24.dp, 0.dp))
+                                        .clickable { /* профиль позже */ },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Профиль", tint = Color.White, modifier = Modifier.size(26.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Блок «Запросы» — заголовок внутри бокса ---
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(plaque)
+                    .padding(vertical = 16.dp),
+            ) {
+                Text(
+                    "Запросы",
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    textAlign = TextAlign.Center,
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(12.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .height(2.dp)
+                        .background(divider)
+                )
+                Spacer(Modifier.height(6.dp))
+                val hasIncoming = state.incomingRequests.isNotEmpty()
+                val hasOutgoing = state.outgoingRequests.isNotEmpty()
+                if (!hasIncoming && !hasOutgoing) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 28.dp), Alignment.Center) {
+                        Text("Пока пусто...", color = offlineGray, fontSize = 16.sp)
+                    }
+                } else {
+                    if (hasIncoming) {
+                        Text("Мне", modifier = Modifier.padding(start = 20.dp, top = 10.dp, bottom = 2.dp), color = Color(0xFF9AA2B5), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        state.incomingRequests.forEach { r ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                PlayerAvatar(r.name, 48.dp, avatarId = r.avatarId, photo = r.photo)
+                                Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                                    Text(r.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                                    Spacer(Modifier.height(2.dp))
+                                    Text("Игр: ${r.games} • Побед: ${r.wins}", fontSize = 14.sp, color = offlineGray)
+                                }
+                                // Две отдельные плашки: красный крестик (отклонить) | зелёная галочка (принять), со спейсером
+                                // Крестик: слева полукруг, справа стена. Галочка: зеркально.
+                                Row(
+                                    modifier = Modifier.height(48.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(48.dp)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(24.dp, 0.dp, 0.dp, 24.dp))
+                                            .background(red)
+                                            .clickable { vm.respondFriend(r.id, false) },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(Icons.Filled.Close, contentDescription = "Отклонить", tint = Color.White, modifier = Modifier.size(26.dp))
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .width(48.dp)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(0.dp, 24.dp, 24.dp, 0.dp))
+                                            .background(green)
+                                            .clickable { vm.respondFriend(r.id, true) },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(Icons.Filled.Check, contentDescription = "Принять", tint = Color.White, modifier = Modifier.size(26.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (hasOutgoing) {
+                        Text("От меня", modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 2.dp), color = Color(0xFF9AA2B5), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        state.outgoingRequests.forEach { r ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                PlayerAvatar(r.name, 48.dp, avatarId = r.avatarId, photo = r.photo)
+                                Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                                    Text(r.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                                    Spacer(Modifier.height(2.dp))
+                                    Text("Игр: ${r.games} • Побед: ${r.wins}", fontSize = 14.sp, color = offlineGray)
+                                }
+                                // Только крестик — отменить заявку (ширина как две плашки со спейсером у друзей)
+                                Box(
+                                    modifier = Modifier
+                                        .width(104.dp)
+                                        .height(48.dp)
+                                        .clip(RoundedCornerShape(24.dp))
+                                        .background(red)
+                                        .clickable { vm.cancelFriendRequest(r.id) },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Отменить", tint = Color.White, modifier = Modifier.size(26.dp))
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -186,7 +593,7 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) encodeAvatar(context, uri)?.let { vm.setPhoto(it) }
     }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 130.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         item {
             PlayerAvatar(state.myName, 96.dp, avatarId=state.myAvatarId, photo=state.myPhoto)
             Row(Modifier.padding(top=12.dp), Arrangement.spacedBy(10.dp)) {
@@ -200,7 +607,7 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
             NeonCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), Arrangement.spacedBy(8.dp)) {
                     Text("Статистика", style=MaterialTheme.typography.titleMedium)
-                    Row(Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         StatChip("Игр: ${state.stats?.games ?: 0}", Modifier.weight(1f)); StatChip("Побед: ${state.stats?.wins ?: 0}", Modifier.weight(1f))
                     }
                 }
@@ -210,7 +617,7 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
 }
 
 private fun LazyListScope.roomsItems(state: UiState, vm: GameViewModel) {
-    items(state.rooms, key = { it.id }) { room -> RoomCard(room.name, room.players, room.maxPlayers, room.timer, room.mode) { vm.joinRoomById(room.id) } }
+    items(state.rooms, key = { it.id }) { room -> RoomCard(room.name, room.players, room.maxPlayers, room.timer, room.mode, onJoin = { vm.joinRoomById(room.id) }) }
     if(state.rooms.isEmpty()) item { Box(Modifier.fillMaxWidth().padding(vertical=24.dp), Alignment.Center) { Text("Пока пусто...", color=AppColors.TextSecondary) } }
 }
 
@@ -229,17 +636,17 @@ private fun CreateRoomScreen(state: UiState, vm: GameViewModel) {
         Text("Режим игры")
         LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             items(listOf("classic" to "Классика", "blitz" to "Блиц", "marathon" to "Марафон", "teams" to "Команды")) { (k, l) ->
-                ModeChip(l, mode == k) { mode = k }
+                ModeChip(l, mode == k, onClick = { mode = k })
             }
         }
         Text("Усложнения")
-        Row(Arrangement.spacedBy(8.dp)) {
-            listOf(0, 3, 4, 5).forEach { len -> ModeChip(if(len==0)"любая" else "$len+", minL==len) { minL=len } }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(0, 3, 4, 5).forEach { len -> ModeChip(if(len==0)"любая" else "$len+", minL==len, onClick = { minL=len }) }
         }
         Text("Тема слов")
         LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             items(listOf("" to "Любая", "food" to "Еда", "animals" to "Животные", "cities" to "Города")) { (k, l) ->
-                ModeChip(l, theme == k) { theme = k }
+                ModeChip(l, theme == k, onClick = { theme = k })
             }
         }
         NeonButton("СОЗДАТЬ", { vm.createRoom(name.ifBlank{"Комната"}, false, 15, 6, mode, minL, false, false, theme) }, Modifier.fillMaxWidth())
@@ -295,7 +702,7 @@ private fun GameScreen(state: UiState, vm: GameViewModel) {
     Column(Modifier.fillMaxSize().padding(20.dp), Arrangement.spacedBy(14.dp), Alignment.CenterHorizontally) {
         Text("Игра: ${game.mode}", style=MaterialTheme.typography.titleLarge)
         Text(if(game.myTurn) "ТВОЙ ХОД!" else "Жди соперника...", color=if(game.myTurn) AppColors.Primary else AppColors.TextSecondary)
-        Row(Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if(game.minWordLen > 0) StatChip("≥${game.minWordLen} букв", color=AppColors.Warning)
             if(game.theme.isNotBlank()) StatChip("Тема: ${game.theme}", color=AppColors.Secondary)
         }

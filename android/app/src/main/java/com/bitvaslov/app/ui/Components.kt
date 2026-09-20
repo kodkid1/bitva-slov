@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,9 +30,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.VideogameAsset
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -51,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -58,12 +62,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 private val BackgroundGradient = Brush.verticalGradient(
-    listOf(AppColors.Background, AppColors.BackgroundSecondary, AppColors.BackgroundGradientEnd)
+    listOf(AppColors.Background, AppColors.Background, AppColors.Background)
 )
 
 @Composable
@@ -228,7 +233,13 @@ fun PlayerAvatar(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(if (active) base else AppColors.SurfaceElevated.copy(alpha = 0.6f)),
+            .background(
+                when {
+                    bitmap != null -> Color.Black
+                    active -> base
+                    else -> AppColors.SurfaceElevated.copy(alpha = 0.6f)
+                }
+            ),
         contentAlignment = Alignment.Center,
     ) {
         if (bitmap != null) {
@@ -390,61 +401,72 @@ fun RoomCard(
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = AppColors.Surface.copy(alpha = 0.96f)),
-        border = BorderStroke(1.dp, AppColors.Secondary.copy(alpha = 0.35f)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101318)),
+        border = BorderStroke(1.dp, Color(0xFF2E323C)),
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.Bottom,
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(name, style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary, modifier = Modifier.weight(1f, fill = false))
-                    if (mode != "classic") {
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            when (mode) {
-                                "blitz" -> "Блиц"
-                                "marathon" -> "Марафон"
-                                "teams" -> "2v2"
-                                "duel" -> "Дуэль"
-                                else -> mode
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = AppColors.Secondary,
-                        )
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("$players/$maxPlayers", fontWeight = FontWeight.Bold, color = AppColors.Secondary)
-                    Text("$timer сек", color = AppColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    repeat(maxPlayers) { i ->
-                        Box(
-                            Modifier.size(8.dp).clip(CircleShape)
-                                .background(if (i < players) AppColors.Primary else AppColors.Border)
-                        )
-                    }
-                }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF21242B))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "$players/$maxPlayers",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    name,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "${modeLabel(mode)} • Время на ход $timer секунд",
+                    fontSize = 13.sp,
+                    color = Color(0xFF9AA2B5),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
             Button(
                 onClick = onJoin,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = AppColors.Secondary,
-                    contentColor = Color.White,
+                    containerColor = Color.White,
+                    contentColor = Color.Black,
                 ),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
             ) {
-                Text("Войти", fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.Check, contentDescription = "Войти", modifier = Modifier.size(24.dp))
             }
         }
     }
+}
+
+private fun modeLabel(mode: String): String = when (mode) {
+    "blitz" -> "Блиц"
+    "marathon" -> "Марафон"
+    "teams" -> "2v2"
+    "duel" -> "Дуэль"
+    else -> "Классика"
 }
 
 @Composable
@@ -472,51 +494,60 @@ fun ActionButton(
 }
 
 @Composable
-fun MainBottomBar(selected: Int, onSelect: (Int) -> Unit) {
-    NavigationBar(
-        containerColor = AppColors.Surface,
-        contentColor = AppColors.TextSecondary,
-        modifier = Modifier.clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)),
+fun MainBottomBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(100.dp)
+            .clip(shape)
+            .background(Color(0xFF0B0C10)),
     ) {
-        NavigationBarItem(
-            selected = selected == 0,
-            onClick = { onSelect(0) },
-            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-            label = { Text("Меню") },
-            colors = navBarColors(),
-        )
-        NavigationBarItem(
-            selected = selected == 1,
-            onClick = { onSelect(1) },
-            icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
-            label = { Text("Комнаты") },
-            colors = navBarColors(),
-        )
-        NavigationBarItem(
-            selected = selected == 2,
-            onClick = { onSelect(2) },
-            icon = { Icon(Icons.Filled.People, contentDescription = null) },
-            label = { Text("Друзья") },
-            colors = navBarColors(),
-        )
-        NavigationBarItem(
-            selected = selected == 3,
-            onClick = { onSelect(3) },
-            icon = { Icon(Icons.Filled.Person, contentDescription = null) },
-            label = { Text("Профиль") },
-            colors = navBarColors(),
-        )
+        Row(
+            Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            listOf(
+                Triple(2, Icons.Filled.Person, "Друзья"),
+                Triple(0, Icons.Filled.Home, "Меню"),
+                Triple(1, Icons.Filled.VideogameAsset, "Комнаты"),
+            ).forEach { (tab, icon, label) ->
+                val isActive = selected == tab
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable { onSelect(tab) },
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isActive) Color(0xFF26292F) else Color.Transparent)
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            icon,
+                            contentDescription = label,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        label,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isActive) Color.White else Color(0xFF9AA2B5),
+                    )
+                }
+            }
+        }
     }
 }
-
-@Composable
-private fun navBarColors() = NavigationBarItemDefaults.colors(
-    selectedIconColor = Color.White,
-    selectedTextColor = AppColors.Primary,
-    indicatorColor = Color.Transparent,
-    unselectedIconColor = AppColors.TextSecondary,
-    unselectedTextColor = AppColors.TextSecondary,
-)
 
 @Composable
 fun RoomCodeCard(code: String, onCopy: () -> Unit) {

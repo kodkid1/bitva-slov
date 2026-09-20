@@ -260,12 +260,18 @@ async function buildFriendsPayload(id) {
   const data = await loadFriendData(id);
   const ids = [...data.friends, ...data.incoming, ...data.outgoing];
   const info = await userInfoFor(ids);
-  const entry = (fid) => ({
-    id: fid,
-    name: (info[fid] || {}).name || fid,
-    avatarId: (info[fid] || {}).avatarId || 0,
-    photo: (info[fid] || {}).photo || '',
-  });
+  const entry = (fid) => {
+    const infoEntry = info[fid] || {};
+    const st = getStats(infoEntry.name || fid);
+    return {
+      id: fid,
+      name: infoEntry.name || fid,
+      avatarId: infoEntry.avatarId || 0,
+      photo: infoEntry.photo || '',
+      games: st.games,
+      wins: st.wins,
+    };
+  };
   return {
     friends: data.friends.map((fid) => ({ ...entry(fid), ...presenceFor(fid) })),
     incoming: data.incoming.map(entry),
@@ -948,18 +954,14 @@ io.on('connection', (socket) => {
       socket.emit('userSearchResult', list);
     };
     if (!db) return respond([]);
-    if (query.length < 2) return respond([]);
-    try {
-      const snap = await db
-        .collection('users')
-        .where('nameLower', '==', nameKey(query))
-        .limit(20)
-        .get();
+    if (!query) return respond([]);
+    const q = nameKey(query);
+    const buildList = (docs) => {
       const list = [];
-      for (const doc of snap.docs) {
-        const d = doc.data() || {};
-        const id = doc.id;
-        if (id === me) continue;
+      for (const doc of docs) {
+        const d = doc.data ? doc.data() : (doc || {});
+        const id = doc.id || d.id;
+        if (!id || id === me) continue;
         list.push({
           id,
           name: d.name || id,
@@ -969,7 +971,29 @@ io.on('connection', (socket) => {
           ...getStats(d.name || id),
         });
       }
-      respond(list);
+      return list;
+    };
+    try {
+      // 1) Префиксный поиск (начало имени) — скорость Firestore
+      const snap = await db
+        .collection('users')
+        .where('nameLower', '>=', q)
+        .where('nameLower', '<=', q + '\uf8ff')
+        .limit(20)
+        .get();
+      let list = buildList(snap.docs);
+      // 2) Если пусто — поиск по подстроке среди недавних игроков
+      if (list.length === 0) {
+        const all = await db
+          .collection('users')
+          .orderBy('updatedAt', 'desc')
+          .limit(300)
+          .get();
+        list = buildList(all.docs).filter((u) =>
+          u.name.toLowerCase().includes(q)
+        );
+      }
+      respond(list.slice(0, 20));
     } catch (err) {
       respond([]);
     }
@@ -1045,6 +1069,26 @@ io.on('connection', (socket) => {
       await userRef(me).set({ incoming: FieldValue.arrayRemove(otherId) }, { merge: true });
       await userRef(otherId).set({ outgoing: FieldValue.arrayRemove(me) }, { merge: true });
     }
+    respond({ ok: true });
+    await sendFriendsToId(me);
+    await sendFriendsToId(otherId);
+  });
+
+  socket.on('cancelFriendRequest', async (payload, callback) => {
+    const respond = (result) => {
+      if (typeof callback === 'function') callback(result);
+      if (result && result.error) socket.emit('errorMessage', { message: result.error });
+    };
+    const me = socketName.get(socket.id);
+    if (!me) return respond({ error: 'Сначала введи имя' });
+    const otherId =
+      normalize2(payload && payload.id) || nameKey(normalize2(payload && payload.name));
+    if (!otherId) return respond({ error: 'Заявка не найдена' });
+    if (!db) return respond({ error: 'Друзья временно недоступны' });
+    const mine = await loadFriendData(me);
+    if (!mine.outgoing.includes(otherId)) return respond({ error: 'Заявка не найдена' });
+    await userRef(me).set({ outgoing: FieldValue.arrayRemove(otherId) }, { merge: true });
+    await userRef(otherId).set({ incoming: FieldValue.arrayRemove(me) }, { merge: true });
     respond({ ok: true });
     await sendFriendsToId(me);
     await sendFriendsToId(otherId);
