@@ -104,19 +104,52 @@ class GameViewModel : ViewModel() {
 
     fun copyRoomCode(code: String) = _ui.update { it.copy(toast = "Код $code скопирован") }
 
-    fun createRoom(roomName: String, isPrivate: Boolean, timer: Int, maxPlayers: Int) {
+    fun createRoom(
+        roomName: String,
+        isPrivate: Boolean,
+        timer: Int,
+        maxPlayers: Int,
+        mode: String = "classic",
+        minWordLen: Int = 0,
+        randomTimer: Boolean = false,
+        acceleration: Boolean = false,
+        theme: String = ""
+    ) {
         val now = System.currentTimeMillis()
         if (now - lastCreateAt < 2000) return
         lastCreateAt = now
-        client?.createRoom(_ui.value.myName, roomName, isPrivate, timer, maxPlayers)
+        client?.createRoom(
+            _ui.value.myName,
+            roomName,
+            isPrivate,
+            timer,
+            maxPlayers,
+            _ui.value.myAvatarId,
+            _ui.value.myPhoto,
+            mode,
+            minWordLen,
+            randomTimer,
+            acceleration,
+            theme
+        )
+    }
+
+    fun setRoomSettings(
+        minWordLen: Int? = null,
+        randomTimer: Boolean? = null,
+        acceleration: Boolean? = null,
+        theme: String? = null,
+        mode: String? = null
+    ) {
+        client?.setRoomSettings(minWordLen, randomTimer, acceleration, theme, mode)
     }
 
     fun joinRoomById(roomId: String) {
-        client?.joinRoom(_ui.value.myName, roomId = roomId)
+        client?.joinRoom(_ui.value.myName, roomId = roomId, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
     }
 
     fun joinRoomByCode(code: String) {
-        client?.joinRoom(_ui.value.myName, code = code)
+        client?.joinRoom(_ui.value.myName, code = code, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
     }
 
     fun startGame() = client?.startGame()
@@ -201,8 +234,8 @@ class GameViewModel : ViewModel() {
         val invite = _ui.value.incomingInvite ?: return
         _ui.update { it.copy(incomingInvite = null) }
         val name = _ui.value.myName.trim()
-        if (invite.roomId.isNotBlank()) client?.joinRoom(name, roomId = invite.roomId)
-        else if (invite.code.isNotBlank()) client?.joinRoom(name, code = invite.code)
+        if (invite.roomId.isNotBlank()) client?.joinRoom(name, roomId = invite.roomId, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
+        else if (invite.code.isNotBlank()) client?.joinRoom(name, code = invite.code, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
     }
 
     fun declineInvite() = _ui.update { it.copy(incomingInvite = null) }
@@ -228,8 +261,8 @@ class GameViewModel : ViewModel() {
                         val code = DeepLink.code
                         DeepLink.clear()
                         val name = _ui.value.myName.trim()
-                        if (!roomId.isNullOrBlank()) client?.joinRoom(name, roomId = roomId)
-                        else if (!code.isNullOrBlank()) client?.joinRoom(name, code = code)
+                        if (!roomId.isNullOrBlank()) client?.joinRoom(name, roomId = roomId, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
+                        else if (!code.isNullOrBlank()) client?.joinRoom(name, code = code, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
                     }
                 }
 
@@ -280,7 +313,12 @@ class GameViewModel : ViewModel() {
                 "gameOver" -> {
                     val o = data as? JSONObject
                     val w = o?.optJSONObject("winner")?.let {
-                        WinnerInfo(it.optString("id", ""), it.optString("name", ""))
+                        WinnerInfo(
+                            it.optString("id", ""),
+                            it.optString("name", ""),
+                            it.optInt("avatarId", 0),
+                            it.optString("photo", ""),
+                        )
                     }
                     _ui.update {
                         it.copy(winner = w, screen = Screen.RESULT)
@@ -288,7 +326,12 @@ class GameViewModel : ViewModel() {
                 }
 
                 "wordAccepted" -> {
-                    _ui.update { it.copy(error = null, toast = null) }
+                    val o = data as? JSONObject
+                    val points = o?.optInt("points", 0) ?: 0
+                    val combo = o?.optInt("combo", 1) ?: 1
+                    _ui.update {
+                        it.copy(error = null, toast = "➤ +$points очков" + if (combo > 1) "  (комбо ×$combo)" else "")
+                    }
                 }
 
                 "wordError" -> {
@@ -299,6 +342,11 @@ class GameViewModel : ViewModel() {
                 "playerEliminated" -> {
                     val name = (data as? JSONObject)?.optString("name", "")
                     _ui.update { it.copy(toast = "$name выбыл по таймеру") }
+                }
+
+                "skipTurn" -> {
+                    val name = (data as? JSONObject)?.optString("name", "")
+                    _ui.update { it.copy(toast = "$name не успел — 0 очков") }
                 }
 
                 "errorMessage" -> {

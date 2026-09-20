@@ -9,7 +9,6 @@ import java.net.URI
 class GameClient(private val onEvent: (String, Any?) -> Unit) {
 
     private var socket: Socket? = null
-    private var nextRoomId: String? = null
 
     fun connect(serverUrl: String) {
         val opts = IO.Options().apply {
@@ -29,19 +28,57 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         MyIds.current = null
     }
 
-    fun createRoom(playerName: String, name: String, isPrivate: Boolean, timer: Int, maxPlayers: Int) {
+    fun createRoom(
+        playerName: String,
+        name: String,
+        isPrivate: Boolean,
+        timer: Int,
+        maxPlayers: Int,
+        avatarId: Int,
+        photo: String,
+        mode: String = "classic",
+        minWordLen: Int = 0,
+        randomTimer: Boolean = false,
+        acceleration: Boolean = false,
+        theme: String = ""
+    ) {
         val o = JSONObject()
         o.put("playerName", playerName)
         o.put("name", name)
         o.put("isPrivate", isPrivate)
         o.put("timer", timer)
         o.put("maxPlayers", maxPlayers)
+        o.put("avatarId", avatarId)
+        o.put("mode", mode)
+        o.put("minWordLen", minWordLen)
+        o.put("randomTimer", randomTimer)
+        o.put("acceleration", acceleration)
+        o.put("theme", theme)
+        if (photo.isNotBlank()) o.put("photo", photo)
         socket?.emit("createRoom", o, callback("_ack_create"))
     }
 
-    fun joinRoom(playerName: String, roomId: String? = null, code: String? = null) {
+    fun setRoomSettings(
+        minWordLen: Int? = null,
+        randomTimer: Boolean? = null,
+        acceleration: Boolean? = null,
+        theme: String? = null,
+        mode: String? = null
+    ) {
+        val o = JSONObject()
+        minWordLen?.let { o.put("minWordLen", it) }
+        randomTimer?.let { o.put("randomTimer", it) }
+        acceleration?.let { o.put("acceleration", it) }
+        theme?.let { o.put("theme", it) }
+        mode?.let { o.put("mode", it) }
+        socket?.emit("setRoomSettings", o)
+    }
+
+    fun joinRoom(playerName: String, roomId: String? = null, code: String? = null, avatarId: Int = 0, photo: String = "") {
         val o = JSONObject()
         o.put("playerName", playerName)
+        o.put("avatarId", avatarId)
+        if (photo.isNotBlank()) o.put("photo", photo)
         if (roomId != null) o.put("roomId", roomId)
         if (code != null) o.put("code", code)
         socket?.emit("joinRoom", o, callback("_ack_join"))
@@ -167,6 +204,10 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
 
         s.on("playerEliminated") { args ->
             onEvent("playerEliminated", args.firstOrNull() as? JSONObject)
+        }
+
+        s.on("skipTurn") { args ->
+            onEvent("skipTurn", args.firstOrNull() as? JSONObject)
         }
 
         s.on("errorMessage") { args ->

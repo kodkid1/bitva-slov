@@ -10,7 +10,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 object AppColors {
-    val Background = Color(0xFF080A18)
+    val Background = Color(0xFF000000)
     val BackgroundSecondary = Color(0xFF111633)
     val BackgroundGradientEnd = Color(0xFF1B1240)
     val Surface = Color(0xFF171C38)

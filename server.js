@@ -338,6 +338,43 @@ function recordGame(playersList, winnerId) {
 
 const START_LETTERS = 'абвгдежзиклмнопрстуфхцчшщэюя'.split('');
 
+const MODE_KEYS = ['classic', 'blitz', 'marathon', 'teams', 'duel'];
+const MODE_LABELS = {
+  classic: 'Классика',
+  blitz: 'Блиц',
+  marathon: 'Марафон',
+  teams: 'Команды 2v2',
+  duel: 'Дуэль',
+};
+const THEME_TITLES = {
+  food: 'Еда',
+  animals: 'Животные',
+  cities: 'Города',
+  plants: 'Растения',
+};
+const THEMES = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'themes.json'), 'utf8'));
+  } catch (err) {
+    return {};
+  }
+})();
+
+function isThemeMember(themeKey, word) {
+  const set = THEMES[themeKey];
+  return !!set && set.indexOf(word) !== -1;
+}
+
+function defaultSettings(mode) {
+  return {
+    mode: MODE_KEYS.includes(mode) ? mode : 'classic',
+    minWordLen: 0,
+    randomTimer: false,
+    acceleration: false,
+    theme: '',
+  };
+}
+
 const BAD_WORDS = [
   'хуй', 'хуе', 'хуя', 'хую', 'хуи', 'охуе', 'ахуе', 'нахуй', 'похуй', 'нахуя',
   'пизд', 'блят', 'бляд', 'еба', 'ебал', 'ебан', 'ебат', 'ебет', 'ебут', 'ебен',
@@ -460,6 +497,7 @@ function publicRoomInfo(room) {
     maxPlayers: room.maxPlayers,
     timer: room.timer,
     state: room.state,
+    mode: room.settings ? room.settings.mode : 'classic',
   };
 }
 
@@ -473,7 +511,16 @@ function roomPayload(room) {
     timer: room.timer,
     maxPlayers: room.maxPlayers,
     state: room.state,
-    players: room.players.map((p) => ({ id: p.id, name: p.name, alive: p.alive })),
+    settings: room.settings || defaultSettings('classic'),
+    players: room.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      alive: p.alive,
+      avatarId: p.avatarId || 0,
+      photo: p.photo || '',
+      score: p.score || 0,
+      team: p.team,
+    })),
   };
 }
 
@@ -485,9 +532,20 @@ function gamePayload(room) {
     deadline: room.deadline,
     endIn: Math.max(0, room.deadline - Date.now()),
     timer: room.timer,
+    turnSeconds: room.turnSeconds,
     usedWords: [...room.usedWords],
     state: room.state,
     winner: room.winner,
+    mode: room.settings ? room.settings.mode : 'classic',
+    minWordLen: room.settings ? room.settings.minWordLen : 0,
+    theme: room.settings ? room.settings.theme : '',
+    totalWords: room.usedWordsCount || 0,
+    marathonTarget:
+      room.settings && room.settings.mode === 'marathon' ? Math.max(10, room.players.length * 6) : 0,
+    scores: (room.players || []).reduce((acc, p) => {
+      acc[p.id] = p.score || 0;
+      return acc;
+    }, {}),
   };
 }
 
@@ -519,9 +577,22 @@ function nextAliveId(room, fromId) {
   return null;
 }
 
+function turnSecondsFor(room) {
+  let base = room.initialTimer;
+  if (room.settings.acceleration) {
+    base = Math.max(5, base - Math.floor(room.usedWordsCount / 4));
+  }
+  if (room.settings.randomTimer) {
+    return Math.max(5, Math.round(base * (0.5 + Math.random() * 0.5)));
+  }
+  return base;
+}
+
 function startTurn(room) {
   clearTimeout(room.turnTimer);
-  room.deadline = Date.now() + room.timer * 1000;
+  room.turnSeconds = turnSecondsFor(room);
+  room.timer = room.turnSeconds;
+  room.deadline = Date.now() + room.turnSeconds * 1000;
   sendGame(room);
   const turnPlayer = room.players.find((p) => p.id === room.turnPlayerId);
   if (turnPlayer && !activeSockets.has(turnPlayer.id)) {
@@ -532,7 +603,7 @@ function startTurn(room) {
       'Назови слово на «' + room.requiredLetter.toUpperCase() + '»',
     );
   }
-  room.turnTimer = setTimeout(() => handleTimeout(room), room.timer * 1000 + 400);
+  room.turnTimer = setTimeout(() => handleTimeout(room), room.turnSeconds * 1000 + 400);
 }
 
 function handleTimeout(room) {
@@ -541,6 +612,13 @@ function handleTimeout(room) {
   if (!player) {
     room.turnPlayerId = nextAliveId(room, room.turnPlayerId);
     if (room.turnPlayerId) startTurn(room);
+    return;
+  }
+  if (room.settings.mode === 'marathon') {
+    player.combo = 0;
+    io.to(room.id).emit('skipTurn', { name: player.name });
+    room.turnPlayerId = nextAliveId(room, room.turnPlayerId);
+    startTurn(room);
     return;
   }
   player.alive = false;
@@ -555,23 +633,71 @@ function handleTimeout(room) {
   startTurn(room);
 }
 
+function marathonTarget(room) {
+  return Math.max(10, room.players.length * 6);
+}
+
+function finishGame(room, winnerPlayer) {
+  room.state = 'finished';
+  clearTimeout(room.turnTimer);
+  room.turnTimer = null;
+  room.turnPlayerId = null;
+  let winner = null;
+  if (room.settings.mode === 'marathon') {
+    if (room.players.length) {
+      const top = room.players.reduce((a, b) => ((b.score || 0) > (a.score || 0) ? b : a));
+      winner = {
+        id: top.id,
+        name: top.name,
+        avatarId: top.avatarId || 0,
+        photo: top.photo || '',
+      };
+    }
+  } else if (room.settings.mode === 'teams' && winnerPlayer) {
+    const members = room.players.filter((p) => p.team === winnerPlayer.team);
+    winner = {
+      id: winnerPlayer.id,
+      name: 'Команда ' + (winnerPlayer.team + 1) + ' — ' + members.map((m) => m.name).join(', '),
+      avatarId: winnerPlayer.avatarId || 0,
+      photo: winnerPlayer.photo || '',
+    };
+  } else if (winnerPlayer) {
+    winner = {
+      id: winnerPlayer.id,
+      name: winnerPlayer.name,
+      avatarId: winnerPlayer.avatarId || 0,
+      photo: winnerPlayer.photo || '',
+    };
+  }
+  room.winner = winner;
+  recordGame(room.players, winner ? winner.id : null);
+  sendRoom(room);
+  sendGame(room);
+  io.to(room.id).emit('gameOver', {
+    winner,
+    scores: gamePayload(room).scores,
+    mode: room.settings.mode,
+  });
+  if (winner) {
+    sendPushToRoom(room, 'Игра окончена', 'Победил ' + winner.name + '!');
+  } else {
+    sendPushToRoom(room, 'Игра окончена', 'Ничья!');
+  }
+}
+
 function checkGameOver(room) {
+  if (room.settings.mode === 'marathon') return false;
+  if (room.settings.mode === 'teams') {
+    const aliveTeams = new Set(room.players.filter((p) => p.alive).map((p) => p.team));
+    if (aliveTeams.size <= 1) {
+      finishGame(room, room.players.find((p) => p.alive) || null);
+      return true;
+    }
+    return false;
+  }
   const alive = room.players.filter((p) => p.alive);
   if (alive.length <= 1) {
-    room.state = 'finished';
-    clearTimeout(room.turnTimer);
-    room.turnTimer = null;
-    room.turnPlayerId = null;
-    room.winner = alive[0] ? { id: alive[0].id, name: alive[0].name } : null;
-    recordGame(room.players, room.winner ? room.winner.id : null);
-    sendRoom(room);
-    sendGame(room);
-    io.to(room.id).emit('gameOver', { winner: room.winner });
-    if (room.winner) {
-      sendPushToRoom(room, 'Игра окончена', 'Победил ' + room.winner.name + '!');
-    } else {
-      sendPushToRoom(room, 'Игра окончена', 'Ничья!');
-    }
+    finishGame(room, alive[0] || null);
     return true;
   }
   return false;
@@ -581,17 +707,25 @@ function beginGame(room) {
   clearTimeout(room.turnTimer);
   room.state = 'playing';
   room.usedWords = new Set();
+  room.usedWordsCount = 0;
   room.lastWord = '';
   room.winner = null;
-  room.players.forEach((p) => {
+  room.players.forEach((p, i) => {
     p.alive = true;
+    p.score = 0;
+    p.combo = 0;
+    p.team = i % 2;
   });
   room.requiredLetter = START_LETTERS[Math.floor(Math.random() * START_LETTERS.length)];
   room.turnPlayerId = room.players[Math.floor(Math.random() * room.players.length)].id;
   sendRoom(room);
   io.to(room.id).emit('gameStarted', {});
   startTurn(room);
-  sendPushToRoom(room, 'Игра началась!', 'Скорее открывай «Битву слов»');
+  sendPushToRoom(
+    room,
+    'Игра началась!',
+    'Режим: ' + (MODE_LABELS[room.settings.mode] || 'Классика') + '. Скорее открывай «Битву слов»',
+  );
 }
 
 function leaveRoom(socket) {
@@ -639,8 +773,12 @@ io.on('connection', (socket) => {
     const data = payload || {};
     const name = normalize2(data.name).slice(0, 30) || 'Комната';
     const isPrivate = !!data.isPrivate;
-    const timer = clamp(data.timer, 5, 120, 15);
-    const maxPlayers = clamp(data.maxPlayers, 2, 6, 6);
+    const mode = MODE_KEYS.includes(data.mode) ? data.mode : 'classic';
+    let timer = clamp(data.timer, 5, 120, 15);
+    let maxPlayers = clamp(data.maxPlayers, 2, 6, 6);
+    if (mode === 'blitz') timer = Math.min(timer, 8);
+    if (mode === 'duel') maxPlayers = 2;
+    if (mode === 'teams') maxPlayers = maxPlayers % 2 === 0 ? maxPlayers : maxPlayers - 1;
 
     if (players.has(socket.id)) leaveRoom(socket);
 
@@ -651,6 +789,7 @@ io.on('connection', (socket) => {
       code: isPrivate ? generateCode() : null,
       hostId: socket.id,
       timer,
+      initialTimer: timer,
       maxPlayers,
       players: [],
       state: 'lobby',
@@ -658,19 +797,40 @@ io.on('connection', (socket) => {
       requiredLetter: '',
       lastWord: '',
       usedWords: new Set(),
+      usedWordsCount: 0,
       turnTimer: null,
+      turnSeconds: 0,
       deadline: 0,
       winner: null,
+      settings: defaultSettings(mode),
     };
     rooms.set(room.id, room);
 
     const playerName = uniqueName(room, data.playerName);
     const userId = socketName.get(socket.id) || (data.playerName ? nameKey(data.playerName) : socket.id);
-    room.players.push({ id: socket.id, userId, name: playerName, alive: true });
+    const avatarId = Number.isFinite(data.avatarId) ? data.avatarId : 0;
+    const photo = typeof data.photo === 'string' && data.photo.length < 200000 ? data.photo : '';
+    room.players.push({ id: socket.id, userId, name: playerName, alive: true, avatarId, photo });
     players.set(socket.id, { id: socket.id, userId, name: playerName, roomId: room.id });
     socket.join(room.id);
 
     if (typeof callback === 'function') callback({ ok: true, roomId: room.id });
+    sendRoom(room);
+    broadcastRoomList();
+  });
+
+  socket.on('setRoomSettings', (payload) => {
+    const info = players.get(socket.id);
+    if (!info) return;
+    const room = rooms.get(info.roomId);
+    if (!room || room.hostId !== socket.id) return;
+    if (room.state !== 'lobby') return;
+    const s = room.settings;
+    const data = payload || {};
+    if (Number.isFinite(data.minWordLen)) s.minWordLen = clamp(data.minWordLen, 0, 8, 0);
+    if (typeof data.randomTimer === 'boolean') s.randomTimer = data.randomTimer;
+    if (typeof data.acceleration === 'boolean') s.acceleration = data.acceleration;
+    if (typeof data.theme === 'string') s.theme = THEMES[data.theme] ? data.theme : '';
     sendRoom(room);
     broadcastRoomList();
   });
@@ -697,7 +857,9 @@ io.on('connection', (socket) => {
 
     const playerName = uniqueName(room, data.playerName);
     const userId = socketName.get(socket.id) || (data.playerName ? nameKey(data.playerName) : socket.id);
-    room.players.push({ id: socket.id, userId, name: playerName, alive: true });
+    const avatarId = Number.isFinite(data.avatarId) ? data.avatarId : 0;
+    const photo = typeof data.photo === 'string' && data.photo.length < 200000 ? data.photo : '';
+    room.players.push({ id: socket.id, userId, name: playerName, alive: true, avatarId, photo });
     players.set(socket.id, { id: socket.id, userId, name: playerName, roomId: room.id });
     socket.join(room.id);
 
@@ -966,6 +1128,11 @@ io.on('connection', (socket) => {
         message: 'Слово должно начинаться на «' + room.requiredLetter.toUpperCase() + '»',
       });
     }
+    if (room.settings.minWordLen > 0 && word.length < room.settings.minWordLen) {
+      return socket.emit('wordError', {
+        message: 'Нужно минимум ' + room.settings.minWordLen + ' букв',
+      });
+    }
     if (isBadWord(word)) {
       return socket.emit('wordError', { message: 'Запрещённое слово' });
     }
@@ -975,13 +1142,40 @@ io.on('connection', (socket) => {
     if (!isKnownWord(word)) {
       return socket.emit('wordError', { message: 'Такого слова нет. Напиши другое' });
     }
+    if (room.settings.theme && !isThemeMember(room.settings.theme, word)) {
+      return socket.emit('wordError', {
+        message: 'Слово не из темы «' + (THEME_TITLES[room.settings.theme] || room.settings.theme) + '»',
+      });
+    }
+
+    const player = room.players.find((p) => p.id === socket.id);
+    const turnMs = Math.max(1, room.turnSeconds * 1000);
+    const elapsed = Math.min(1, Math.max(0, Date.now() - (room.deadline - turnMs)) / turnMs);
+    const speedMult = elapsed <= 0.25 ? 3 : elapsed <= 0.5 ? 2 : elapsed <= 0.75 ? 1.5 : 1;
+    player.combo = (player.combo || 0) + 1;
+    const comboMult = Math.min(1 + (player.combo - 1) * 0.5, 3);
+    const points = Math.round(word.length * speedMult * comboMult);
+    player.score = (player.score || 0) + points;
+    player.words = (player.words || 0) + 1;
 
     room.usedWords.add(word);
+    room.usedWordsCount += 1;
     room.lastWord = word;
     room.requiredLetter = nextLetterFrom(word);
-    socket.emit('wordAccepted', { word });
+    socket.emit('wordAccepted', {
+      word,
+      points,
+      speedMult,
+      comboMult,
+      total: player.score,
+      combo: player.combo,
+    });
 
     room.turnPlayerId = nextAliveId(room, room.turnPlayerId);
+    if (room.settings.mode === 'marathon' && room.usedWordsCount >= marathonTarget(room)) {
+      finishGame(room, null);
+      return;
+    }
     startTurn(room);
   });
 

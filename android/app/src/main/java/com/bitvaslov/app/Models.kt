@@ -106,12 +106,20 @@ data class Player(
     val id: String,
     val name: String,
     val alive: Boolean = true,
+    val avatarId: Int = 0,
+    val photo: String = "",
+    val score: Int = 0,
+    val team: Int = 0,
 ) {
     companion object {
         fun fromJson(o: JSONObject) = Player(
             id = o.optString("id", ""),
             name = o.optString("name", ""),
             alive = o.optBoolean("alive", true),
+            avatarId = o.optInt("avatarId", 0),
+            photo = o.optString("photo", ""),
+            score = o.optInt("score", 0),
+            team = o.optInt("team", 0),
         )
     }
 }
@@ -126,11 +134,25 @@ data class RoomState(
     val maxPlayers: Int,
     val state: String,
     val players: List<Player>,
+    val mode: String = "classic",
+    val minWordLen: Int = 0,
+    val randomTimer: Boolean = false,
+    val acceleration: Boolean = false,
+    val theme: String = "",
 ) {
     companion object {
         fun fromJson(o: JSONObject): RoomState {
             val arr = o.optJSONArray("players") ?: JSONArray()
             val players = (0 until arr.length()).map { Player.fromJson(arr.getJSONObject(it)) }
+            val s = o.optJSONObject("settings")
+            
+            // Пытаемся взять настройки из вложенного объекта settings или из корня
+            val mode = s?.optString("mode") ?: o.optString("mode", "classic")
+            val minWordLen = s?.optInt("minWordLen") ?: o.optInt("minWordLen", 0)
+            val randomTimer = s?.optBoolean("randomTimer") ?: o.optBoolean("randomTimer", false)
+            val acceleration = s?.optBoolean("acceleration") ?: o.optBoolean("acceleration", false)
+            val theme = s?.optString("theme") ?: o.optString("theme", "")
+
             return RoomState(
                 id = o.optString("id", ""),
                 name = o.optString("name", ""),
@@ -141,6 +163,11 @@ data class RoomState(
                 maxPlayers = o.optInt("maxPlayers", 6),
                 state = o.optString("state", "lobby"),
                 players = players,
+                mode = mode,
+                minWordLen = minWordLen,
+                randomTimer = randomTimer,
+                acceleration = acceleration,
+                theme = theme,
             )
         }
     }
@@ -154,6 +181,7 @@ data class RoomSummary(
     val players: Int,
     val maxPlayers: Int,
     val timer: Int,
+    val mode: String = "classic",
 ) {
     companion object {
         fun fromJson(o: JSONObject) = RoomSummary(
@@ -162,6 +190,7 @@ data class RoomSummary(
             players = o.optInt("players", 0),
             maxPlayers = o.optInt("maxPlayers", 6),
             timer = o.optInt("timer", 15),
+            mode = o.optString("mode", "classic"),
         )
     }
 }
@@ -174,11 +203,30 @@ data class GameState(
     val timer: Int,
     val usedWords: List<String>,
     val finished: Boolean,
+    val mode: String = "classic",
+    val minWordLen: Int = 0,
+    val theme: String = "",
+    val totalWords: Int = 0,
+    val marathonTarget: Int = 0,
+    val scores: Map<String, Int> = emptyMap(),
 ) {
     companion object {
         fun fromJson(o: JSONObject): GameState {
             val arr = o.optJSONArray("usedWords") ?: JSONArray()
             val words = (0 until arr.length()).map { arr.optString(it) }
+            val scoresObj = o.optJSONObject("scores") ?: JSONObject()
+            val scores = HashMap<String, Int>()
+            val keys = scoresObj.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                scores[k] = scoresObj.optInt(k, 0)
+            }
+            
+            val s = o.optJSONObject("settings")
+            val mode = s?.optString("mode") ?: o.optString("mode", "classic")
+            val minWordLen = s?.optInt("minWordLen") ?: o.optInt("minWordLen", 0)
+            val theme = s?.optString("theme") ?: o.optString("theme", "")
+
             return GameState(
                 requiredLetter = o.optString("requiredLetter", ""),
                 lastWord = o.optString("lastWord", ""),
@@ -187,6 +235,12 @@ data class GameState(
                 timer = o.optInt("timer", 15),
                 usedWords = words,
                 finished = o.optString("state", "playing") == "finished",
+                mode = mode,
+                minWordLen = minWordLen,
+                theme = theme,
+                totalWords = o.optInt("totalWords", 0),
+                marathonTarget = o.optInt("marathonTarget", 0),
+                scores = scores,
             )
         }
     }
@@ -197,6 +251,8 @@ data class GameState(
 data class WinnerInfo(
     val id: String,
     val name: String,
+    val avatarId: Int = 0,
+    val photo: String = "",
 )
 
 data class PlayerStats(

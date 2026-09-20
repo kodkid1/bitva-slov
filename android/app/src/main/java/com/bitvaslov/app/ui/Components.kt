@@ -256,6 +256,10 @@ fun PlayerChip(
     isTurn: Boolean = false,
     isEliminated: Boolean = false,
     isMe: Boolean = false,
+    avatarId: Int = -1,
+    photo: String = "",
+    score: Int? = null,
+    team: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val borderColor = when {
@@ -281,16 +285,35 @@ fun PlayerChip(
                 size = 36.dp,
                 color = if (isTurn) AppColors.Primary else AppColors.Secondary,
                 active = isTurn,
+                avatarId = avatarId,
+                photo = photo,
             )
-            Column {
-                Text(
-                    name + (if (isMe) " (ты)" else ""),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = if (isEliminated) AppColors.TextDisabled else AppColors.TextPrimary,
-                )
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        name + (if (isMe) " (ты)" else ""),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (isEliminated) AppColors.TextDisabled else AppColors.TextPrimary,
+                    )
+                    if (team != 0) {
+                        Text(
+                            " T${team + 1}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AppColors.Secondary,
+                        )
+                    }
+                }
                 status?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = if (isEliminated) AppColors.Danger else AppColors.TextSecondary)
                 }
+            }
+            score?.let {
+                Text(
+                    "$it",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = AppColors.Primary,
+                )
             }
         }
     }
@@ -360,6 +383,7 @@ fun RoomCard(
     players: Int,
     maxPlayers: Int,
     timer: Int,
+    mode: String = "classic",
     onJoin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -374,7 +398,24 @@ fun RoomCard(
             verticalAlignment = Alignment.Bottom,
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(name, style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, style = MaterialTheme.typography.titleMedium, color = AppColors.TextPrimary, modifier = Modifier.weight(1f, fill = false))
+                    if (mode != "classic") {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            when (mode) {
+                                "blitz" -> "Блиц"
+                                "marathon" -> "Марафон"
+                                "teams" -> "2v2"
+                                "duel" -> "Дуэль"
+                                else -> mode
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = AppColors.Secondary,
+                        )
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("$players/$maxPlayers", fontWeight = FontWeight.Bold, color = AppColors.Secondary)
                     Text("$timer сек", color = AppColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
@@ -593,18 +634,48 @@ fun NumberTile(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val fg = if (selected) AppColors.ContentDark else AppColors.TextPrimary
     Button(
         onClick = onClick,
+        enabled = enabled,
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = if (selected) AppColors.Primary else AppColors.SurfaceElevated,
             contentColor = fg,
+            disabledContainerColor = AppColors.SurfaceElevated.copy(alpha = 0.5f),
+            disabledContentColor = AppColors.TextSecondary.copy(alpha = 0.7f),
         ),
         modifier = modifier.height(52.dp),
         contentPadding = PaddingValues(0.dp),
     ) {
         Text("$value", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+    }
+}
+
+@Composable
+fun ModeChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val fg = if (selected) AppColors.ContentDark else AppColors.TextPrimary
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) AppColors.Primary else AppColors.SurfaceElevated,
+            contentColor = fg,
+            disabledContainerColor = AppColors.SurfaceElevated.copy(alpha = 0.5f),
+            disabledContentColor = AppColors.TextSecondary.copy(alpha = 0.6f),
+        ),
+        modifier = modifier.height(44.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp),
+    ) {
+        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
