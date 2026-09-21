@@ -142,27 +142,11 @@
   function spawnRooms(n) {
     if (!socket) { log('Сначала войди'); return; }
     if (spawnBusy) { log('Подожди, комнаты ещё создаются...'); return; }
-    const name = $('name').value.trim();
     spawnBusy = true;
-    let created = 0;
-    const step = () => {
-      if (created >= n) {
-        spawnBusy = false;
-        log('Создано комнат: ' + n);
-        return;
-      }
-      created++;
-      socket.emit('createRoom', {
-        playerName: name || ('Тестер ' + created),
-        name: 'Тест ' + created,
-        isPrivate: false,
-        timer: 15,
-        maxPlayers: 6,
-        avatarId: 0,
-      }, () => {});
-      setTimeout(step, 40);
-    };
-    step();
+    socket.emit('spawnTestRooms', { count: n }, () => {
+      spawnBusy = false;
+      log('Создано комнат: ' + n);
+    });
     log('Создаю ' + n + ' комнат...');
   }
 

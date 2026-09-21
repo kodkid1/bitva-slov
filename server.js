@@ -920,6 +920,52 @@ io.on('connection', (socket) => {
     if (removed > 0) socket.emit('errorMessage', { message: 'Очищено: ' + removed });
   });
 
+  socket.on('spawnTestRooms', (payload) => {
+    const map = payload && payload.count;
+    let count = Number.isFinite(map) ? Math.round(map) : 30;
+    count = Math.min(Math.max(count, 1), 200);
+    const names = ['Костя', 'Аня', 'Макс', 'Лиза', 'Дима', 'Соня', 'Тимур', 'Вероника', 'Егор', 'Полина'];
+    for (let i = 0; i < count; i++) {
+      const id = generateRoomId();
+      const nPlayers = 2 + (i % 5);
+      const playersArr = [];
+      for (let p = 0; p < nPlayers; p++) {
+        playersArr.push({
+          id: 'bot-' + id + '-' + p,
+          userId: 'bot-' + id + '-' + p,
+          name: names[(id.length + p) % names.length],
+          alive: true,
+          avatarId: p % 12,
+          photo: '',
+        });
+      }
+      rooms.set(id, {
+        id,
+        name: 'Тест ' + (i + 1),
+        isPrivate: false,
+        code: null,
+        hostId: null,
+        timer: 15,
+        initialTimer: 15,
+        maxPlayers: 6,
+        players: playersArr,
+        state: 'lobby',
+        turnPlayerId: null,
+        requiredLetter: '',
+        lastWord: '',
+        usedWords: new Set(),
+        usedWordsCount: 0,
+        turnTimer: null,
+        turnSeconds: 0,
+        deadline: 0,
+        winner: null,
+        settings: defaultSettings('classic'),
+      });
+    }
+    broadcastRoomList();
+    socket.emit('errorMessage', { message: 'Создано фейковых комнат: ' + count });
+  });
+
   socket.on('statsRequest', (payload, callback) => {
     const name = normalize2(payload && payload.name);
     if (typeof callback === 'function') callback(getStats(name));
