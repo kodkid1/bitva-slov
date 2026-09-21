@@ -136,6 +136,10 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         socket?.emit("userSearch", JSONObject().put("name", name), callback("_ack_search"))
     }
 
+    fun requestProfile(id: String) {
+        socket?.emit("profileRequest", JSONObject().put("id", id), callback("_ack_profile"))
+    }
+
     fun sendFriendRequest(id: String) {
         socket?.emit("friendRequest", JSONObject().put("id", id), callback("_ack_friend"))
     }

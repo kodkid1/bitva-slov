@@ -53,9 +53,11 @@ class GameViewModel : ViewModel() {
     fun autoConnect() {
         if (autoStarted) return
         autoStarted = true
-        if (ProfileStore.hasProfile) {
-            connect(_ui.value.serverUrl, ProfileStore.name)
+        val name = ProfileStore.name.ifBlank {
+            "Игрок" + ProfileStore.playerId.takeLast(4)
         }
+        if (ProfileStore.name.isBlank()) ProfileStore.saveName(name)
+        connect(_ui.value.serverUrl, name)
     }
 
     fun connect(url: String, name: String) {
@@ -225,6 +227,12 @@ class GameViewModel : ViewModel() {
     fun requestFriends() = client?.requestFriends()
     fun searchUser(name: String) = client?.searchUser(name.trim())
     fun clearSearch() = _ui.update { it.copy(searchResults = emptyList()) }
+    fun openProfile(id: String) {
+        _ui.update { it.copy(profile = null) }
+        client?.requestProfile(id)
+    }
+    fun closeProfile() = _ui.update { it.copy(profile = null) }
+    fun notify(msg: String) = _ui.update { it.copy(toast = msg) }
     fun addFriend(id: String) = client?.sendFriendRequest(id)
     fun respondFriend(id: String, accept: Boolean) = client?.respondFriendRequest(id, accept)
     fun cancelFriendRequest(id: String) = client?.cancelFriendRequest(id)
@@ -376,6 +384,17 @@ class GameViewModel : ViewModel() {
                     }
                 }
 
+                "_ack_profile" -> {
+                    val o = data as? JSONObject
+                    if (o?.optBoolean("ok", false) == true) {
+                        _ui.update { it.copy(profile = UserProfile.fromJson(o)) }
+                    } else {
+                        _ui.update {
+                            it.copy(error = o?.optString("error", "Не удалось открыть профиль") ?: "Не удалось открыть профиль")
+                        }
+                    }
+                }
+
                 "friendsUpdate" -> {
                     val o = data as? JSONObject ?: return@launch
                     val fArr = o.optJSONArray("friends") ?: JSONArray()
@@ -462,6 +481,7 @@ data class UiState(
     val incomingRequests: List<FriendRef> = emptyList(),
     val outgoingRequests: List<FriendRef> = emptyList(),
     val searchResults: List<UserSummary> = emptyList(),
+    val profile: UserProfile? = null,
     val incomingInvite: RoomInvite? = null,
     val error: String? = null,
     val toast: String? = null,

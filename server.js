@@ -993,9 +993,57 @@ io.on('connection', (socket) => {
           u.name.toLowerCase().includes(q)
         );
       }
+      // 3) Точечный поиск по айди — если пользователь ввёл ID целиком
+      if (!list.some((u) => u.id === q)) {
+        try {
+          const byId = await userRef(q).get();
+          if (byId.exists) {
+            const d = byId.data() || {};
+            list.push({
+              id: q,
+              name: d.name || q,
+              avatarId: d.avatarId || 0,
+              photo: d.photo || '',
+              ...presenceFor(q),
+              ...getStats(d.name || q),
+            });
+          }
+        } catch (err) {}
+      }
       respond(list.slice(0, 20));
     } catch (err) {
       respond([]);
+    }
+  });
+
+  socket.on('profileRequest', async (payload, callback) => {
+    const respond = (result) => {
+      if (typeof callback === 'function') callback(result);
+    };
+    const me = socketName.get(socket.id);
+    const id = normalize2(payload && payload.id);
+    if (!id) return respond({ error: 'Нет игрока' });
+    if (!db) return respond({ error: 'Профили временно недоступны' });
+    try {
+      const snap = await userRef(id).get();
+      if (!snap.exists) return respond({ error: 'Игрок не найден' });
+      const d = snap.data() || {};
+      const rel = me ? await loadFriendData(me) : { friends: [], incoming: [], outgoing: [] };
+      respond({
+        ok: true,
+        id,
+        name: d.name || id,
+        avatarId: d.avatarId || 0,
+        photo: d.photo || '',
+        ...presenceFor(id),
+        ...getStats(d.name || id),
+        isFriend: rel.friends.includes(id),
+        isMe: me === id,
+        incoming: rel.incoming.includes(id),
+        outgoing: rel.outgoing.includes(id),
+      });
+    } catch (err) {
+      respond({ error: 'Ошибка загрузки' });
     }
   });
 

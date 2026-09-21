@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тест друзей</title>
+<style>
+  body { font-family: monospace; margin: 16px; max-width: 560px; }
+  input, button { font-size: 15px; padding: 6px; margin: 3px 0; }
+  .row { margin: 8px 0; }
+  .box { border: 1px solid #ccc; padding: 8px; margin: 8px 0; }
+  .f { white-space: pre-wrap; background: #f4f4f4; padding: 6px; font-size: 13px; }
+</style>
+</head>
+<body>
+<h3>Друзья — проверка заявок</h3>
+
+<div class="row">
+  Твоё имя: <input id="name" placeholder="Игрок1">
+  <button onclick="login()">Войти</button>
+</div>
+<div id="status"></div>
+
+<div class="row">
+  Найти игрока: <input id="query" placeholder="Имя или айди">
+  <button onclick="search()">Поиск</button>
+</div>
+<div id="results" class="box"><b>Результаты поиска:</b><div id="resultsList"></div></div>
+
+<div class="row">
+  <button onclick="refresh()">Обновить друзей/заявки</button>
+</div>
+
+<div class="box"><b>Заявки мне:</b><div id="incoming"></div></div>
+<div class="box"><b>Заявки от меня:</b><div id="outgoing"></div></div>
+<div class="box"><b>Друзья:</b><div id="friends"></div></div>
+
+<div class="box"><b>Лог:</b><div id="log" class="f"></div></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const log = (s) => { $('log').textContent = s + '\n' + $('log').textContent; console.log(s); };
+
+  let socket = null;
+  let myId = '';
+
+  function login() {
+    const name = $('name').value.trim();
+    if (!name) { log('Введи имя'); return; }
+    if (socket) socket.disconnect();
+    socket = io();
+    myId = 't-' + name.toLowerCase().replace(/ё/g, 'е');
+    socket.on('connect', () => { log('Подключено'); });
+    socket.on('connected', (o) => {
+      myId = (o && o.id) || myId;
+      $('status').textContent = 'ID: ' + myId;
+      log('connected: ' + JSON.stringify(o));
+    });
+    socket.on('friendsUpdate', (o) => { log('friendsUpdate'); render(o); });
+    socket.on('friendPresence', (o) => { log('presence: ' + JSON.stringify(o)); });
+    socket.on('errorMessage', (o) => log('ОШИБКА: ' + ((o&&o.message)||JSON.stringify(o))));
+    socket.on('userSearchResult', (list) => renderSearch(list));
+    socket.emit('login', { id: myId, name });
+    log('login: ' + name);
+  }
+
+  function search() {
+    const q = $('query').value.trim();
+    if (!socket) { log('Сначала войди'); return; }
+    socket.emit('userSearch', { name: q }, (res) => {
+      log('search ack: ' + JSON.stringify(res));
+      renderSearch((res && res.users) || []);
+    });
+  }
+
+  function renderSearch(list) {
+    $('resultsList').innerHTML = '';
+    if (!list || !list.length) { $('resultsList').textContent = 'пусто'; return; }
+    list.forEach((u) => {
+      const id = u.id, st = u.online ? 'В сети' : 'Не в сети';
+      const row = document.createElement('div');
+      row.innerHTML = '<b>' + (u.name||id) + '</b> [' + st + '] Игр:' + (u.games||0) + ', Побед:' + (u.wins||0) +
+        ' <a href="#" onclick="add(\'' + id + '\')">Добавить</a>';
+      $('resultsList').appendChild(row);
+    });
+  }
+
+  function add(id) { socket.emit('friendRequest', { id }); log('friendRequest: ' + id); }
+  function respond(id, accept) { socket.emit('friendRespond', { id, accept }); log('respond: ' + id + ' ' + (accept ? 'принять' : 'отклонить')); }
+  function cancel(id) { socket.emit('cancelFriendRequest', { id }); log('cancel: ' + id); }
+  function removeF(id) { socket.emit('removeFriend', { id }); log('remove: ' + id); }
+
+  function render(o) {
+    $('friends').innerHTML = '';
+    (o.friends || []).forEach((f) => {
+      const d = document.createElement('div');
+      d.innerHTML = (f.online ? '🟢' : '⚪') + ' ' + (f.name||f.id) + ' (игр:' + (f.games||0) + ', побед:' + (f.wins||0) + ') ' +
+        (f.online ? '<a href="#" onclick="invite(\'' + f.id + '\')">Пригласить</a> ' : '') +
+        '<a href="#" onclick="removeF(\'' + f.id + '\')">Удалить</a>';
+      $('friends').appendChild(d);
+    });
+    if (!(o.friends||[]).length) $('friends').textContent = 'пусто';
+
+    $('incoming').innerHTML = '';
+    (o.incoming || []).forEach((r) => {
+      const d = document.createElement('div');
+      d.innerHTML = (r.name||r.id) +
+        ' <a href="#" onclick="respond(\'' + r.id + '\', true)">Принять</a>' +
+        ' <a href="#" onclick="respond(\'' + r.id + '\', false)">Отклонить</a>';
+      $('incoming').appendChild(d);
+    });
+    if (!(o.incoming||[]).length) $('incoming').textContent = 'пусто';
+
+    $('outgoing').innerHTML = '';
+    (o.outgoing || []).forEach((r) => {
+      const d = document.createElement('div');
+      d.innerHTML = (r.name||r.id) + ' <a href="#" onclick="cancel(\'' + r.id + '\')">Отменить</a>';
+      $('outgoing').appendChild(d);
+    });
+    if (!(o.outgoing||[]).length) $('outgoing').textContent = 'пусто';
+  }
+
+  function invite(id) { socket.emit('inviteFriend', { id }); log('invite: ' + id); }
+  function refresh() { if (socket) socket.emit('friendsRequest'); else log('Сначала войди'); }
+</script>
+</body>
+</html>

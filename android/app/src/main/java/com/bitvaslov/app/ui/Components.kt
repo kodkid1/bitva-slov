@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +31,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
@@ -56,6 +57,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -66,6 +69,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.highlight.Highlight
 
 private val BackgroundGradient = Brush.verticalGradient(
     listOf(AppColors.Background, AppColors.Background, AppColors.Background)
@@ -210,6 +217,42 @@ val AvatarColors = listOf(
 fun avatarColor(id: Int): Color =
     AvatarColors[((id % AvatarColors.size) + AvatarColors.size) % AvatarColors.size]
 
+// Кэш декодированных фото — чтобы не декодировать Base64 на каждом кадре
+private val avatarBitmaps = object : android.util.LruCache<String, android.graphics.Bitmap>(48) {
+    override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = value.byteCount
+}
+
+private fun decodeAvatar(photo: String): android.graphics.Bitmap? {
+    if (photo.isBlank()) return null
+    avatarBitmaps.get(photo)?.let { return it }
+    return try {
+        val bytes = android.util.Base64.decode(photo, android.util.Base64.DEFAULT)
+        val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        if (bitmap != null) avatarBitmaps.put(photo, bitmap)
+        bitmap
+    } catch (e: Exception) {
+        null
+    }
+}
+
+// Доминирующий цвет фото — чтобы плашки вокруг авы были её продолжением, а не фиолетовым
+fun avatarAccent(photo: String, avatarId: Int): Color {
+    if (photo.isBlank()) return avatarColor(avatarId)
+    val bmp = decodeAvatar(photo) ?: return avatarColor(avatarId)
+    return try {
+        val s = 8
+        val sm = android.graphics.Bitmap.createScaledBitmap(bmp, s, s, true)
+        var r = 0L; var g = 0L; var b = 0L; var n = 0L
+        for (x in 0 until s) for (y in 0 until s) {
+            val c = sm.getPixel(x, y)
+            r += (c shr 16) and 0xFF; g += (c shr 8) and 0xFF; b += c and 0xFF; n++
+        }
+        Color((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+    } catch (e: Exception) {
+        avatarColor(avatarId)
+    }
+}
+
 @Composable
 fun PlayerAvatar(
     name: String,
@@ -220,15 +263,7 @@ fun PlayerAvatar(
     photo: String = "",
 ) {
     val base = if (avatarId >= 0) avatarColor(avatarId) else color
-    val bitmap = remember(photo) {
-        if (photo.isBlank()) null
-        else try {
-            val bytes = android.util.Base64.decode(photo, android.util.Base64.DEFAULT)
-            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        } catch (e: Exception) {
-            null
-        }
-    }
+    val bitmap = remember(photo) { decodeAvatar(photo) }
     Box(
         modifier = Modifier
             .size(size)
@@ -398,35 +433,31 @@ fun RoomCard(
     onJoin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF101318)),
-        border = BorderStroke(1.dp, Color(0xFF2E323C)),
-    ) {
+    Column(modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().padding(12.dp),
+            Modifier.fillMaxWidth().height(78.dp).padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFF21242B))
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .width(62.dp)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(0xFF242426)),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     "$players/$maxPlayers",
-                    fontSize = 24.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White,
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     name,
-                    fontSize = 17.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     textAlign = TextAlign.Center,
@@ -437,27 +468,36 @@ fun RoomCard(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "${modeLabel(mode)} • Время на ход $timer секунд",
-                    fontSize = 13.sp,
-                    color = Color(0xFF9AA2B5),
+                    fontSize = 14.sp,
+                    color = Color(0xFF8E8E93),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(10.dp))
             Button(
                 onClick = onJoin,
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.White,
-                    contentColor = Color.Black,
+                    contentColor = Color(0xFF1C1C1E),
                 ),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                contentPadding = PaddingValues(6.dp),
+                modifier = Modifier.width(64.dp).height(44.dp),
             ) {
-                Icon(Icons.Filled.Check, contentDescription = "Войти", modifier = Modifier.size(24.dp))
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Войти", modifier = Modifier.size(22.dp))
             }
         }
+        // Тонкий серый разделитель между комнатами
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .height(1.dp)
+                .background(Color(0xFF2C2C2E))
+        )
     }
 }
 
@@ -493,26 +533,62 @@ fun ActionButton(
     }
 }
 
+private data class NavItem(
+    val tab: Int,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val label: String,
+    val hasBadge: Boolean = false,
+)
+
 @Composable
-fun MainBottomBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+fun MainBottomBar(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    backdrop: Backdrop,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(100.dp)
-            .clip(shape)
-            .background(Color(0xFF0B0C10)),
+            .height(86.dp)
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { shape },
+                effects = {
+                    blur(9f.dp.toPx())
+                },
+                highlight = { Highlight(alpha = 0.16f) },
+                onDrawSurface = {
+                    // Матовое тёмное «стекло» из макета (#121214), слегка прозрачное, чтобы был живёт blur
+                    drawRect(Color(0xFF121214).copy(alpha = 0.88f))
+                    // Лёгкие светлые края стекла
+                    drawRect(
+                        Brush.horizontalGradient(
+                            colorStops = arrayOf(
+                                0f to Color.White.copy(alpha = 0.18f),
+                                0.12f to Color.White.copy(alpha = 0f),
+                                0.88f to Color.White.copy(alpha = 0f),
+                                1f to Color.White.copy(alpha = 0.18f),
+                            )
+                        )
+                    )
+                },
+            )
+            .clip(shape),
     ) {
         Row(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize()
+                .padding(top = 6.dp, start = 10.dp, end = 10.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            listOf(
-                Triple(2, Icons.Filled.Person, "Друзья"),
-                Triple(0, Icons.Filled.Home, "Меню"),
-                Triple(1, Icons.Filled.VideogameAsset, "Комнаты"),
-            ).forEach { (tab, icon, label) ->
+            val navItems = listOf(
+                NavItem(2, Icons.Filled.Person, "Друзья", hasBadge = true),
+                NavItem(0, Icons.Filled.Home, "Меню"),
+                NavItem(1, Icons.Filled.VideogameAsset, "Комнаты"),
+            )
+            navItems.forEach { (tab, icon, label, badge) ->
                 val isActive = selected == tab
                 Column(
                     modifier = Modifier
@@ -524,24 +600,49 @@ fun MainBottomBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = M
                 ) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isActive) Color(0xFF26292F) else Color.Transparent)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isActive) Color(0xFF2C2C2E)
+                                else Color.Transparent
+                            )
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            icon,
-                            contentDescription = label,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp),
-                        )
+                        Box(
+                            modifier = Modifier.size(18.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                icon,
+                                contentDescription = label,
+                                tint = if (isActive) Color.White else Color(0xFF8E8E93),
+                                modifier = Modifier.size(18.dp),
+                            )
+                            if (badge) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(9.dp)
+                                        .align(Alignment.TopEnd)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF2C2C2E)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Add,
+                                        contentDescription = null,
+                                        tint = if (isActive) Color.White else Color(0xFF8E8E93),
+                                        modifier = Modifier.size(6.dp),
+                                    )
+                                }
+                            }
+                        }
                     }
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         label,
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (isActive) Color.White else Color(0xFF9AA2B5),
+                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isActive) Color.White else Color(0xFF8E8E93),
                     )
                 }
             }

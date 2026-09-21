@@ -78,6 +78,47 @@ data class UserSummary(
     }
 }
 
+data class UserProfile(
+    val id: String,
+    val name: String,
+    val avatarId: Int = 0,
+    val photo: String = "",
+    val online: Boolean = false,
+    val inGame: Boolean = false,
+    val games: Int = 0,
+    val wins: Int = 0,
+    val losses: Int = 0,
+    val bestStreak: Int = 0,
+    val currentStreak: Int = 0,
+    val isFriend: Boolean = false,
+    val isMe: Boolean = false,
+    val incoming: Boolean = false,
+    val outgoing: Boolean = false,
+) {
+    val winRate: Int
+        get() = if (games > 0) (wins * 100 / games) else 0
+
+    companion object {
+        fun fromJson(o: JSONObject) = UserProfile(
+            id = o.optString("id", ""),
+            name = o.optString("name", ""),
+            avatarId = o.optInt("avatarId", 0),
+            photo = o.optString("photo", ""),
+            online = o.optBoolean("online", false),
+            inGame = o.optBoolean("inGame", false),
+            games = o.optInt("games", 0),
+            wins = o.optInt("wins", 0),
+            losses = o.optInt("losses", 0),
+            bestStreak = o.optInt("bestStreak", 0),
+            currentStreak = o.optInt("currentStreak", 0),
+            isFriend = o.optBoolean("isFriend", false),
+            isMe = o.optBoolean("isMe", false),
+            incoming = o.optBoolean("incoming", false),
+            outgoing = o.optBoolean("outgoing", false),
+        )
+    }
+}
+
 data class RoomInvite(
     val roomId: String,
     val code: String,

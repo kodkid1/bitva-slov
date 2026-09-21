@@ -2,7 +2,10 @@ package com.bitvaslov.app.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bitvaslov.app.*
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
 
 private fun encodeAvatar(context: android.content.Context, uri: android.net.Uri): String? {
@@ -63,8 +68,7 @@ fun App(vm: GameViewModel = viewModel()) {
         AppBackground {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 when (state.screen) {
-                    Screen.CONNECT -> ConnectScreen(state, vm)
-                    Screen.LOBBY -> LobbyScreen(state, vm, bottomTab, onSelectTab = { bottomTab = it })
+                    Screen.CONNECT, Screen.LOBBY -> LobbyScreen(state, vm, bottomTab, onSelectTab = { bottomTab = it })
                     Screen.CREATEROOM -> CreateRoomScreen(state, vm)
                     Screen.CODEENTRY -> CodeEntryScreen(state, vm)
                     Screen.SETTINGS -> SettingsScreen(state, vm)
@@ -86,46 +90,36 @@ fun App(vm: GameViewModel = viewModel()) {
             dismissButton = { TextButton(onClick = { vm.declineInvite() }) { Text("Позже") } }
         )
     }
-}
 
-@Composable
-private fun ConnectScreen(state: UiState, vm: GameViewModel) {
-    val kb = LocalSoftwareKeyboardController.current
-    Column(Modifier.fillMaxSize().padding(24.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-        Logo(size = 72.dp)
-        Spacer(Modifier.height(20.dp))
-        AnimatedTitle("БИТВА ", "СЛОВ", "Думай быстро. Пиши первым.")
-        Spacer(Modifier.height(32.dp))
-        OutlinedTextField(state.myName, vm::setMyName, label = { Text("Имя") }, singleLine = true, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(16.dp))
-        NeonButton("ИГРАТЬ", { kb?.hide(); vm.connect(state.serverUrl.trim(), state.myName.trim()) }, enabled = state.myName.isNotBlank(), modifier = Modifier.fillMaxWidth().padding(top = 16.dp))
-        state.error?.let { Text(it, color = AppColors.Danger, modifier = Modifier.padding(top = 8.dp)) }
-    }
+    state.profile?.let { p -> ProfileSheet(p, vm) }
 }
 
 @Composable
 private fun LobbyScreen(state: UiState, vm: GameViewModel, tab: Int, onSelectTab: (Int) -> Unit) {
     Box(Modifier.fillMaxSize()) {
-        when (tab) {
-            1 -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 130.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                item { AnimatedTitle("", "КОМНАТЫ", "Присоединяйся к игре") }
-                roomsItems(state, vm)
+        val backdrop = rememberLayerBackdrop()
+        Box(Modifier.fillMaxSize().background(AppColors.Background).layerBackdrop(backdrop)) {
+            when (tab) {
+                1 -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 130.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    item { AnimatedTitle("", "КОМНАТЫ", "Присоединяйся к игре") }
+                    roomsItems(state, vm)
+                }
+                2 -> FriendsTab(state, vm)
+                3 -> ProfileTab(state, vm)
+                else -> MenuTab(state, vm, onSelectTab)
             }
-            2 -> FriendsTab(state, vm)
-            3 -> ProfileTab(state, vm)
-            else -> MenuTab(state, vm, onSelectTab)
         }
         MainBottomBar(
             selected = tab,
             onSelect = { onSelectTab(it); if (it == 2) vm.requestFriends() },
+            backdrop = backdrop,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
 }
 
 private val TopBarShape = RoundedCornerShape(30.dp)
-private val TopBarColor = Color(0xFF21242B)
-private val TopBarInnerColor = Color(0xFF191C22)
+private val TopBarColor = Color(0xFF111111)
 
 @Composable
 private fun TopBar(
@@ -146,20 +140,30 @@ private fun TopBar(
     ) {
         Text(
             "Меню",
-            fontSize = 22.sp,
+            fontSize = 28.sp,
             fontWeight = FontWeight.ExtraBold,
             color = Color.White,
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .padding(start = 24.dp),
         )
+        val avatarAccent = avatarAccent(myPhoto, myAvatarId)
         Box(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 6.dp)
                 .height(48.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(TopBarInnerColor),
+                .clip(RoundedCornerShape(28.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        colorStops = arrayOf(
+                            0f to Color.Black,
+                            0.15f to Color.Black,
+                            0.55f to avatarAccent.copy(alpha = 0.5f),
+                            1f to avatarAccent,
+                        )
+                    )
+                ),
         ) {
             Row(Modifier.padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
@@ -179,55 +183,57 @@ private fun TopBar(
 
 @Composable
 private fun MenuTab(state: UiState, vm: GameViewModel, onSelectTab: (Int) -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF0B0B0B))) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 20.dp, end = 20.dp, top = 96.dp, bottom = 130.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 96.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = { vm.requestCodeEntry() },
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF0A0C10),
-                        contentColor = Color.White,
-                    ),
-                    border = BorderStroke(1.dp, Color(0xFF3A4050)),
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Box(
                     modifier = Modifier
-                        .padding(horizontal = 12.dp)
                         .fillMaxWidth()
-                        .height(72.dp),
+                        .padding(horizontal = 10.dp)
+                        .height(64.dp)
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(Color(0xFF141416))
+                        .border(1.5.dp, Color(0xFF2A2A2D), RoundedCornerShape(26.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { vm.requestCodeEntry() },
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text("Войти по коду", fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Войти по коду", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
                 Box(
                     modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Button(
-                        onClick = { vm.requestCreateRoom() },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF0D0F14),
-                            contentColor = Color(0xFFB4BCCC),
-                        ),
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.78f)
-                            .height(64.dp),
+                            .fillMaxWidth(0.8f)
+                            .height(58.dp)
+                            .clip(RoundedCornerShape(26.dp))
+                            .background(Color(0xFF131316))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { vm.requestCreateRoom() },
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text("Создать комнату", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Создать комнату", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC5C5C7))
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF0A0C10))
-                    .padding(top = 14.dp, bottom = 10.dp),
+                    .clip(RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp))
+                    .background(Color(0xFF161618))
+                    .padding(top = 16.dp),
             ) {
                 Text(
                     "Открытые комнаты",
@@ -236,26 +242,77 @@ private fun MenuTab(state: UiState, vm: GameViewModel, onSelectTab: (Int) -> Uni
                         .padding(horizontal = 16.dp),
                     textAlign = TextAlign.Center,
                     color = Color.White,
-                    fontSize = 20.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .height(2.dp)
-                        .background(Color(0xFF2E323C))
+                        .height(1.dp)
+                        .background(Color(0xFF2C2C2E))
                 )
-                Spacer(Modifier.height(8.dp))
-                LazyColumn(
+                Spacer(Modifier.height(6.dp))
+                val roomsListState = rememberLazyListState()
+                var roomsScrolling by remember { mutableStateOf(false) }
+                LaunchedEffect(roomsListState) {
+                    snapshotFlow { roomsListState.isScrollInProgress }.collect { roomsScrolling = it }
+                }
+                val fadeAlpha by animateFloatAsState(
+                    targetValue = if (roomsScrolling) 1f else 0f,
+                    animationSpec = tween(300),
+                    label = "roomsFade",
+                )
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    roomsItems(state, vm)
+                    LazyColumn(
+                        state = roomsListState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 130.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
+                    ) {
+                        roomsItems(state, vm)
+                    }
+                    // Фейд-фильтр снизу списка — появляется только во время скролла
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .align(Alignment.BottomCenter)
+                            .alpha(fadeAlpha)
+                            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        Color(0xFF161618).copy(alpha = 0f),
+                                        Color(0xFF161618).copy(alpha = 0.9f),
+                                        Color(0xFF161618),
+                                    )
+                                )
+                            ),
+                    )
+                    // Фейд-фильтр сверху списка — проявляется при скролле вверх
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .align(Alignment.TopCenter)
+                            .alpha(fadeAlpha)
+                            .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        Color(0xFF161618),
+                                        Color(0xFF161618).copy(alpha = 0.9f),
+                                        Color(0xFF161618).copy(alpha = 0f),
+                                    )
+                                )
+                            ),
+                    )
                 }
             }
         }
@@ -276,14 +333,12 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
     var query by remember { mutableStateOf("") }
     val kb = LocalSoftwareKeyboardController.current
     // Цвета как в меню
-    val plaque = Color(0xFF21242B)
-    val circle = Color(0xFF3A4050)
-    val plusLighter = Color(0xFF9AA2B5)
+    val blockBg = Color(0xFF161618)
+    val button = Color(0xFF141416)
     val offlineGray = Color(0xFF9AA2B5)
-    val divider = Color(0xFF2E323C)
     val green = Color(0xFF2ECC71)
     val red = Color(0xFFE74C3C)
-    val plaqueDark = Color(0xFF0D0F14)
+    val redDark = Color(0xFFA93226)
 
     // Онлайн друзья сверху, офлайн ниже
     val sortedFriends = remember(state.friends) {
@@ -302,7 +357,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                     .fillMaxWidth()
                     .height(72.dp)
                     .clip(RoundedCornerShape(36.dp))
-                    .background(plaque),
+                    .background(blockBg),
                 contentAlignment = Alignment.Center,
             ) {
                 Row(
@@ -323,12 +378,12 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                         },
                     )
                     Spacer(Modifier.width(12.dp))
-                    // Серый кружок с плюсиком чуть светлее
+                    // Круглая кнопка поиска
                     Box(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape)
-                            .background(circle)
+                            .background(button)
                             .clickable {
                                 kb?.hide()
                                 if (query.isNotBlank()) vm.searchUser(query)
@@ -338,7 +393,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                         Icon(
                             Icons.Filled.Add,
                             contentDescription = "Искать",
-                            tint = plusLighter,
+                            tint = Color.White,
                             modifier = Modifier.size(26.dp),
                         )
                     }
@@ -354,29 +409,31 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
-                        .background(plaque)
+                        .background(blockBg)
+                        .clickable { vm.openProfile(user.id) }
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     PlayerAvatar(user.name, 48.dp, avatarId = user.avatarId, photo = user.photo)
                     Column(Modifier.weight(1f).padding(start = 14.dp)) {
                         Text(user.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            if (user.online) "в сети" else "не в сети",
-                            fontSize = 15.sp,
-                            color = if (user.online) Color.White else offlineGray,
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(circle)
-                            .clickable { vm.addFriend(user.id) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = "Добавить", tint = plusLighter, modifier = Modifier.size(26.dp))
-                    }
+Text(
+                        if (user.online) "В сети" else "Не в сети",
+                        fontSize = 15.sp,
+                        color = if (user.online) Color.White else offlineGray,
+                    )
+                }
+                // Кнопка добавления
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(button)
+                        .clickable { vm.addFriend(user.id) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "Добавить", tint = Color.White, modifier = Modifier.size(26.dp))
+                }
                 }
             }
             item { Spacer(Modifier.height(2.dp)) }
@@ -388,7 +445,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
-                    .background(plaque)
+                    .background(blockBg)
                     .padding(vertical = 16.dp),
             ) {
                 Text(
@@ -396,16 +453,8 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     textAlign = TextAlign.Center,
                     color = Color.White,
-                    fontSize = 20.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.height(12.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .height(2.dp)
-                        .background(divider)
                 )
                 Spacer(Modifier.height(10.dp))
                 if (sortedFriends.isEmpty()) {
@@ -414,7 +463,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                     }
                 } else {
                     sortedFriends.forEach { f ->
-                        // Строка друга: фото | имя/статус | плашка [плюс | стрелка вправо]
+                        // Строка друга: фото | имя/статус | одна плашка [плюс | стрелка вправо]
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -426,38 +475,35 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                                 Text(f.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                                 Spacer(Modifier.height(3.dp))
                                 Text(
-                                    if (f.online) "в сети" else "офлайн",
+                                    if (f.online) "В сети" else "Офлайн",
                                     fontSize = 15.sp,
                                     color = if (f.online) Color.White else offlineGray,
                                 )
                             }
-                            // Две отдельные плашки: плюс (пригласить) | стрелка вправо (профиль), со спейсером
-                            // Плюс: слева полукруг, справа стена. Стрелка: зеркально.
+                            // Единая плашка без контура: плюс (пригласить) | стрелка (профиль)
                             Row(
-                                modifier = Modifier.height(48.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.height(50.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .width(48.dp)
+                                        .width(52.dp)
                                         .fillMaxHeight()
-                                        .clip(RoundedCornerShape(24.dp, 0.dp, 0.dp, 24.dp))
-                                        .background(if (f.online) plaqueDark else plaqueDark.copy(alpha = 0.55f))
-                                        .border(1.dp, if (f.online) circle else circle.copy(alpha = 0.45f), RoundedCornerShape(24.dp, 0.dp, 0.dp, 24.dp))
+                                        .clip(RoundedCornerShape(26.dp, 0.dp, 0.dp, 26.dp))
+                                        .background(if (f.online) button else button.copy(alpha = 0.55f))
                                         .clickable(enabled = f.online) { vm.inviteFriend(f.id) },
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(Icons.Filled.Add, contentDescription = "Пригласить", tint = if (f.online) Color.White else offlineGray.copy(alpha = 0.55f), modifier = Modifier.size(26.dp))
+                                    Icon(Icons.Filled.Add, contentDescription = "Пригласить", tint = if (f.online) Color.White else offlineGray, modifier = Modifier.size(26.dp))
                                 }
                                 Box(
                                     modifier = Modifier
-                                        .width(48.dp)
+                                        .width(52.dp)
                                         .fillMaxHeight()
-                                        .clip(RoundedCornerShape(0.dp, 24.dp, 24.dp, 0.dp))
-                                        .background(plaqueDark)
-                                        .border(1.dp, circle, RoundedCornerShape(0.dp, 24.dp, 24.dp, 0.dp))
-                                        .clickable { /* профиль позже */ },
+                                        .clip(RoundedCornerShape(0.dp, 26.dp, 26.dp, 0.dp))
+                                        .background(button)
+                                        .clickable { vm.openProfile(f.id) },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Профиль", tint = Color.White, modifier = Modifier.size(26.dp))
@@ -475,7 +521,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
-                    .background(plaque)
+                    .background(blockBg)
                     .padding(vertical = 16.dp),
             ) {
                 Text(
@@ -483,18 +529,10 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     textAlign = TextAlign.Center,
                     color = Color.White,
-                    fontSize = 20.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                 )
-                Spacer(Modifier.height(12.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .height(2.dp)
-                        .background(divider)
-                )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(10.dp))
                 val hasIncoming = state.incomingRequests.isNotEmpty()
                 val hasOutgoing = state.outgoingRequests.isNotEmpty()
                 if (!hasIncoming && !hasOutgoing) {
@@ -503,7 +541,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                     }
                 } else {
                     if (hasIncoming) {
-                        Text("Мне", modifier = Modifier.padding(start = 20.dp, top = 10.dp, bottom = 2.dp), color = Color(0xFF9AA2B5), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Мне", modifier = Modifier.padding(start = 20.dp, top = 10.dp, bottom = 2.dp), color = Color(0xFF9AA2B5), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         state.incomingRequests.forEach { r ->
                             Row(
                                 modifier = Modifier
@@ -517,19 +555,18 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                                     Spacer(Modifier.height(2.dp))
                                     Text("Игр: ${r.games} • Побед: ${r.wins}", fontSize = 14.sp, color = offlineGray)
                                 }
-                                // Две отдельные плашки: красный крестик (отклонить) | зелёная галочка (принять), со спейсером
-                                // Крестик: слева полукруг, справа стена. Галочка: зеркально.
+                                // Одна плашка с градиентом от красного (отклонить) к зелёному (принять)
                                 Row(
-                                    modifier = Modifier.height(48.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier
+                                        .height(50.dp)
+                                        .clip(RoundedCornerShape(26.dp))
+                                        .background(Brush.horizontalGradient(listOf(red, green))),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .width(48.dp)
+                                            .width(52.dp)
                                             .fillMaxHeight()
-                                            .clip(RoundedCornerShape(24.dp, 0.dp, 0.dp, 24.dp))
-                                            .background(red)
                                             .clickable { vm.respondFriend(r.id, false) },
                                         contentAlignment = Alignment.Center,
                                     ) {
@@ -537,10 +574,8 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                                     }
                                     Box(
                                         modifier = Modifier
-                                            .width(48.dp)
+                                            .width(52.dp)
                                             .fillMaxHeight()
-                                            .clip(RoundedCornerShape(0.dp, 24.dp, 24.dp, 0.dp))
-                                            .background(green)
                                             .clickable { vm.respondFriend(r.id, true) },
                                         contentAlignment = Alignment.Center,
                                     ) {
@@ -551,7 +586,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                         }
                     }
                     if (hasOutgoing) {
-                        Text("От меня", modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 2.dp), color = Color(0xFF9AA2B5), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text("От меня", modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 2.dp), color = Color(0xFF9AA2B5), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         state.outgoingRequests.forEach { r ->
                             Row(
                                 modifier = Modifier
@@ -565,13 +600,13 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                                     Spacer(Modifier.height(2.dp))
                                     Text("Игр: ${r.games} • Побед: ${r.wins}", fontSize = 14.sp, color = offlineGray)
                                 }
-                                // Только крестик — отменить заявку (ширина как две плашки со спейсером у друзей)
+                                // Только крестик — отменить заявку, тёмно-красный (ширина как градиентная плашка)
                                 Box(
                                     modifier = Modifier
                                         .width(104.dp)
-                                        .height(48.dp)
-                                        .clip(RoundedCornerShape(24.dp))
-                                        .background(red)
+                                        .height(50.dp)
+                                        .clip(RoundedCornerShape(26.dp))
+                                        .background(redDark)
                                         .clickable { vm.cancelFriendRequest(r.id) },
                                     contentAlignment = Alignment.Center,
                                 ) {
@@ -583,6 +618,119 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ProfileSheet(p: UserProfile, vm: GameViewModel) {
+    val context = LocalContext.current
+    val plaque = Color(0xFF161618)
+    val plaqueBtn = Color(0xFF1C1C1E)
+    val gray = Color(0xFF8E8E93)
+    val green = Color(0xFF2ECC71)
+    val red = Color(0xFFE74C3C)
+    val white = Color.White
+
+    fun copyId() {
+        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("id", p.id))
+        vm.notify("Айди скопирован")
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).clickable { vm.closeProfile() }, contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier
+                .padding(24.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(36.dp))
+                .background(plaque)
+                .clickable(enabled = false) { }
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            PlayerAvatar(p.name, 96.dp, avatarId = p.avatarId, photo = p.photo)
+            Spacer(Modifier.height(12.dp))
+            Text(p.name, color = white, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                when {
+                    p.isMe -> "это ты"
+                    p.inGame -> "в игре"
+                    p.online -> "в сети"
+                    else -> "офлайн"
+                },
+                color = if (p.isMe) gray else if (p.inGame) Color(0xFFFFB300) else if (p.online) green else gray,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            // Айди
+            Row(
+                modifier = Modifier
+                    .padding(top = 16.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(plaqueBtn)
+                    .clickable { copyId() }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("айди: ", color = gray, fontSize = 14.sp)
+                Text(shortId(p.id), color = white, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(8.dp))
+                Icon(Icons.Filled.ContentCopy, null, tint = gray, modifier = Modifier.size(16.dp))
+            }
+            Spacer(Modifier.height(16.dp))
+            // Статистика
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCell("Игр", "${p.games}", Modifier.weight(1f))
+                StatCell("Побед", "${p.wins}", Modifier.weight(1f))
+                StatCell("↑", "${p.winRate}%", Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(14.dp))
+            // Действия
+            if (p.isMe) {
+                // ничего
+            } else if (p.isFriend) {
+                ProfileButton("Удалить из друзей", red, { vm.removeFriend(p.id); vm.closeProfile() })
+            } else if (p.incoming) {
+                ProfileButton("Принять заявку", green, { vm.respondFriend(p.id, true) })
+            } else if (p.outgoing) {
+                Text("Заявка отправлена", color = gray, fontSize = 15.sp)
+            } else {
+                ProfileButton("Добавить в друзья", plaqueBtn, { vm.addFriend(p.id) })
+            }
+        }
+    }
+}
+
+private fun shortId(id: String): String = id.take(8) + "…"
+
+@Composable
+private fun StatCell(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF1C1C1E))
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(value, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(2.dp))
+        Text(label, color = Color(0xFF8E8E93), fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun ProfileButton(label: String, bg: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(bg)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -609,6 +757,21 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
                     Text("Статистика", style=MaterialTheme.typography.titleMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         StatChip("Игр: ${state.stats?.games ?: 0}", Modifier.weight(1f)); StatChip("Побед: ${state.stats?.wins ?: 0}", Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        if (state.myId.isNotBlank()) item {
+            NeonCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), Arrangement.spacedBy(8.dp)) {
+                    Text("Твой айди", style=MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(state.myId, color=AppColors.TextSecondary, fontSize=14.sp, modifier=Modifier.weight(1f))
+                        NeonButton("КОПИРОВАТЬ", {
+                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            cm.setPrimaryClip(android.content.ClipData.newPlainText("id", state.myId))
+                            vm.notify("Айди скопирован")
+                        })
                     }
                 }
             }
