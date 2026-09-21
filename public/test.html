@@ -28,8 +28,13 @@
 <div id="results" class="box"><b>Результаты поиска:</b><div id="resultsList"></div></div>
 
 <div class="row">
-  <button onclick="refresh()">Обновить друзей/заявки</button>
+  <b>Создать тестовые комнаты:</b>
+  <button onclick="spawnRooms(10)">+10</button>
+  <button onclick="spawnRooms(30)">+30</button>
+  <button onclick="spawnRooms(60)">+60</button>
+  <button onclick="clearRooms()">Очистить</button>
 </div>
+<div id="roomsCount" class="box"><b>Комнат на сервере:</b> <span id="roomsNum">?</span></div>
 
 <div class="box"><b>Заявки мне:</b><div id="incoming"></div></div>
 <div class="box"><b>Заявки от меня:</b><div id="outgoing"></div></div>
@@ -40,7 +45,14 @@
 <script src="/socket.io/socket.io.js"></script>
 <script>
   const $ = (id) => document.getElementById(id);
-  const log = (s) => { $('log').textContent = s + '\n' + $('log').textContent; console.log(s); };
+  const log = (s) => {
+    const el = $('log');
+    el.textContent = s + '\n' + el.textContent;
+    while (el.textContent.split('\n').length > 40) {
+      el.textContent = el.textContent.slice(0, el.textContent.lastIndexOf('\n'));
+    }
+    console.log(s);
+  };
 
   let socket = null;
   let myId = '';
@@ -55,14 +67,16 @@
     socket.on('connected', (o) => {
       myId = (o && o.id) || myId;
       $('status').textContent = 'ID: ' + myId;
-      log('connected: ' + JSON.stringify(o));
+      log('ID: ' + myId);
     });
-    socket.on('friendsUpdate', (o) => { log('friendsUpdate'); render(o); });
-    socket.on('friendPresence', (o) => { log('presence: ' + JSON.stringify(o)); });
+    socket.on('friendsUpdate', (o) => { render(o); });
+    socket.on('roomList', (list) => {
+      $('roomsNum').textContent = (list || []).length;
+    });
+    socket.on('friendPresence', (o) => {});
     socket.on('errorMessage', (o) => log('ОШИБКА: ' + ((o&&o.message)||JSON.stringify(o))));
     socket.on('userSearchResult', (list) => renderSearch(list));
     socket.emit('login', { id: myId, name });
-    log('login: ' + name);
   }
 
   function search() {
@@ -123,6 +137,40 @@
 
   function invite(id) { socket.emit('inviteFriend', { id }); log('invite: ' + id); }
   function refresh() { if (socket) socket.emit('friendsRequest'); else log('Сначала войди'); }
+
+  let spawnBusy = false;
+  function spawnRooms(n) {
+    if (!socket) { log('Сначала войди'); return; }
+    if (spawnBusy) { log('Подожди, комнаты ещё создаются...'); return; }
+    const name = $('name').value.trim();
+    spawnBusy = true;
+    let created = 0;
+    const step = () => {
+      if (created >= n) {
+        spawnBusy = false;
+        log('Создано комнат: ' + n);
+        return;
+      }
+      created++;
+      socket.emit('createRoom', {
+        playerName: name || ('Тестер ' + created),
+        name: 'Тест ' + created,
+        isPrivate: false,
+        timer: 15,
+        maxPlayers: 6,
+        avatarId: 0,
+      }, () => {});
+      setTimeout(step, 40);
+    };
+    step();
+    log('Создаю ' + n + ' комнат...');
+  }
+
+  function clearRooms() {
+    if (!socket) { log('Сначала войди'); return; }
+    socket.emit('clearTestRooms', { prefix: 'Тест ' });
+    log('Запросил очистку тестовых комнат');
+  }
 </script>
 </body>
 </html>

@@ -898,6 +898,28 @@ io.on('connection', (socket) => {
     broadcastRoomList();
   });
 
+  socket.on('clearTestRooms', (payload) => {
+    const prefix = (payload && payload.prefix) || 'Тест ';
+    let removed = 0;
+    [...rooms.entries()].forEach(([id, room]) => {
+      if (!room.name.startsWith(prefix)) return;
+      room.players.forEach((p) => {
+        players.delete(p.id);
+        const s = io.sockets.sockets.get(p.id);
+        if (s) s.leave(id);
+      });
+      clearTimeout(room.turnTimer);
+      rooms.delete(id);
+      removed++;
+    });
+    if (typeof io !== 'undefined') {
+      // Уведомим хостов удалённых комнат о покидании
+      // (сокеты уже разлогинены, roomlist обновится ниже)
+    }
+    broadcastRoomList();
+    if (removed > 0) socket.emit('errorMessage', { message: 'Очищено: ' + removed });
+  });
+
   socket.on('statsRequest', (payload, callback) => {
     const name = normalize2(payload && payload.name);
     if (typeof callback === 'function') callback(getStats(name));
