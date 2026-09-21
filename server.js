@@ -201,9 +201,9 @@ function userRef(id) {
 }
 
 async function ensureUser(userId, name, avatarId, photo) {
-  if (!db || !userId) return;
+  if (!db || !userId) return 0;
   const clean = normalize2(name);
-  if (!clean) return;
+  if (!clean) return 0;
   userName.set(userId, clean);
   const patch = {
     name: clean,
@@ -215,9 +215,25 @@ async function ensureUser(userId, name, avatarId, photo) {
     patch.photo = photo.length > 0 && photo.length < 200000 ? photo : FieldValue.delete();
   }
   try {
+    const snap = await userRef(userId).get();
+    const d = snap.exists ? snap.data() || {} : {};
+    let pid = Number.isFinite(d.pid) ? d.pid : 0;
+    if (!pid) {
+      pid = pidNext();
+      patch.pid = pid;
+      try {
+        await db.collection('counters').doc('nextPid').set({ value: pid }, { merge: true });
+      } catch (err) {
+        console.warn('Не сохранить счётчик pid:', err.message);
+      }
+    } else {
+      patch.pid = pid;
+    }
     await userRef(userId).set(patch, { merge: true });
+    return pid;
   } catch (err) {
     console.warn('Не удалось сохранить игрока:', err.message);
+    return 0;
   }
 }
 
@@ -247,7 +263,12 @@ async function userInfoFor(ids) {
     snaps.forEach((s) => {
       if (s.exists) {
         const d = s.data() || {};
-        map[s.id] = { name: d.name || s.id, avatarId: d.avatarId || 0, photo: d.photo || '' };
+        map[s.id] = {
+          name: d.name || s.id,
+          avatarId: d.avatarId || 0,
+          photo: d.photo || '',
+          pid: Number.isFinite(d.pid) ? d.pid : 0,
+        };
       }
     });
   } catch (err) {
@@ -265,6 +286,7 @@ async function buildFriendsPayload(id) {
     const st = getStats(infoEntry.name || fid);
     return {
       id: fid,
+      pid: infoEntry.pid || 0,
       name: infoEntry.name || fid,
       avatarId: infoEntry.avatarId || 0,
       photo: infoEntry.photo || '',
@@ -321,6 +343,39 @@ function emptyStats() {
 function getStats(name) {
   const key = normalize2(name).toLowerCase();
   return stats.get(key) || emptyStats();
+}
+
+const PID_START = 10000;
+let pidCounter = PID_START - 1;
+
+// Загружаем последний выданный pid из Firestore при старте
+(function loadPidCounter() {
+  if (!db) return;
+  db.collection('counters')
+    .doc('nextPid')
+    .get()
+    .then((snap) => {
+      const v = snap.exists ? snap.data().value : 0;
+      if (Number.isFinite(v) && v >= pidCounter) pidCounter = v;
+      console.log('Счётчик айди стартует с', pidCounter);
+    })
+    .catch(() => {});
+})();
+
+function pidNext() {
+  pidCounter += 1;
+  return pidCounter;
+}
+
+async function getPid(id) {
+  if (!db || !id) return 0;
+  try {
+    const snap = await userRef(id).get();
+    if (!snap.exists) return 0;
+    const d = snap.data() || {};
+    if (Number.isFinite(d.pid)) return d.pid;
+  } catch (err) {}
+  return 0;
 }
 
 function recordGame(playersList, winnerId) {
@@ -1003,7 +1058,8 @@ io.on('connection', (socket) => {
     const userId = normalize2(payload && payload.id) || (name ? nameKey(name) : '');
     if (!userId || !name) return;
     attachUser(socket, userId);
-    await ensureUser(userId, name, payload && payload.avatarId, payload && payload.photo);
+    const myPid = await ensureUser(userId, name, payload && payload.avatarId, payload && payload.photo);
+    socket.emit('pid', { pid: myPid });
     socket.emit('friendsUpdate', await buildFriendsPayload(userId));
     notifyFriendsPresence(userId);
   });
@@ -1032,6 +1088,7 @@ io.on('connection', (socket) => {
         if (!id || id === me) continue;
         list.push({
           id,
+          pid: Number.isFinite(d.pid) ? d.pid : 0,
           name: d.name || id,
           avatarId: d.avatarId || 0,
           photo: d.photo || '',
@@ -1069,6 +1126,7 @@ io.on('connection', (socket) => {
             const d = byId.data() || {};
             list.push({
               id: q,
+              pid: Number.isFinite(d.pid) ? d.pid : 0,
               name: d.name || q,
               avatarId: d.avatarId || 0,
               photo: d.photo || '',
@@ -1100,6 +1158,7 @@ io.on('connection', (socket) => {
       respond({
         ok: true,
         id,
+        pid: Number.isFinite(d.pid) ? d.pid : await getPid(id),
         name: d.name || id,
         avatarId: d.avatarId || 0,
         photo: d.photo || '',
