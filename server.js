@@ -412,6 +412,7 @@ const THEME_TITLES = {
   animals: 'Животные',
   cities: 'Города',
   plants: 'Растения',
+  countries: 'Страны',
 };
 const THEMES = (() => {
   try {
@@ -554,6 +555,8 @@ function publicRoomInfo(room) {
   return {
     id: room.id,
     name: room.name,
+    isPrivate: room.isPrivate,
+    createdAt: room.createdAt || 0,
     players: room.players.length,
     maxPlayers: room.maxPlayers,
     timer: room.timer,
@@ -621,7 +624,7 @@ function sendGame(room) {
 function broadcastRoomList() {
   const list = [];
   for (const room of rooms.values()) {
-    if (!room.isPrivate && room.state === 'lobby') list.push(publicRoomInfo(room));
+    if (room.state === 'lobby') list.push(publicRoomInfo(room));
   }
   io.emit('roomList', list);
 }
@@ -827,7 +830,7 @@ function leaveRoom(socket) {
 io.on('connection', (socket) => {
   socket.emit('connected', { id: socket.id });
   socket.emit('roomList', [...rooms.values()]
-    .filter((r) => !r.isPrivate && r.state === 'lobby')
+    .filter((r) => r.state === 'lobby')
     .map(publicRoomInfo));
 
   socket.on('createRoom', (payload, callback) => {
@@ -849,6 +852,7 @@ io.on('connection', (socket) => {
       isPrivate,
       code: isPrivate ? generateCode() : null,
       hostId: socket.id,
+      createdAt: Date.now(),
       timer,
       initialTimer: timer,
       maxPlayers,
