@@ -507,9 +507,6 @@ function isKnownWord(word) {
   if (!wordBuf) return true;
   const w = normalize(word);
   if (hasWord(w)) return true;
-  if (w.length > 4 && hasWord(w.slice(0, -1))) return true;
-  if (w.length > 5 && hasWord(w.slice(0, -2))) return true;
-  if (w.length > 4 && hasWord(w.slice(0, -1) + 'ь')) return true;
   return false;
 }
 
@@ -869,6 +866,10 @@ io.on('connection', (socket) => {
       winner: null,
       settings: defaultSettings(mode),
     };
+    if (Number.isFinite(data.minWordLen)) room.settings.minWordLen = clamp(data.minWordLen, 0, 8, 0);
+    if (typeof data.randomTimer === 'boolean') room.settings.randomTimer = data.randomTimer;
+    if (typeof data.acceleration === 'boolean') room.settings.acceleration = data.acceleration;
+    if (typeof data.theme === 'string' && THEMES[data.theme]) room.settings.theme = data.theme;
     rooms.set(room.id, room);
 
     const playerName = uniqueName(room, data.playerName);
