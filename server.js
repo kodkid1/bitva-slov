@@ -524,12 +524,12 @@ function generateRoomId() {
   return id;
 }
 
-function generateCode() {
-  let code;
-  do {
-    code = String(Math.floor(1000 + Math.random() * 9000));
-  } while ([...rooms.values()].some((r) => r.code === code));
-  return code;
+function normalizeCode(value) {
+  return String(value == null ? '' : value).replace(/\D/g, '').slice(0, 6);
+}
+
+function codeTaken(code, exceptRoomId) {
+  return [...rooms.values()].some((r) => r.code === code && r.id !== exceptRoomId);
 }
 
 function uniqueName(room, name) {
@@ -843,11 +843,25 @@ io.on('connection', (socket) => {
 
     if (players.has(socket.id)) leaveRoom(socket);
 
+    let roomCode = null;
+    if (isPrivate) {
+      const wanted = normalizeCode(data.code);
+      if (wanted.length < 4) {
+        if (typeof callback === 'function') callback({ ok: false, error: 'Код от 4 цифр' });
+        return;
+      }
+      if (codeTaken(wanted)) {
+        if (typeof callback === 'function') callback({ ok: false, error: 'Этот код уже занят' });
+        return;
+      }
+      roomCode = wanted;
+    }
+
     const room = {
       id: generateRoomId(),
       name,
       isPrivate,
-      code: isPrivate ? generateCode() : null,
+      code: roomCode,
       hostId: socket.id,
       createdAt: Date.now(),
       timer,
@@ -906,7 +920,8 @@ io.on('connection', (socket) => {
     let room = null;
 
     if (data.code) {
-      room = [...rooms.values()].find((r) => r.isPrivate && r.code === normalize2(data.code));
+      room = [...rooms.values()].find((r) => r.isPrivate && r.code === normalizeCode(data.code));
+      if (room && data.roomId && room.id !== data.roomId) room = null;
     } else if (data.roomId) {
       room = rooms.get(data.roomId);
     }
@@ -917,6 +932,7 @@ io.on('connection', (socket) => {
     };
 
     if (!room) return fail('Комната не найдена');
+    if (room.isPrivate && normalizeCode(data.code) !== room.code) return fail('Нужен код комнаты');
     if (room.state !== 'lobby') return fail('Игра уже идёт');
     if (room.players.length >= room.maxPlayers) return fail('Комната заполнена');
     if (players.has(socket.id)) leaveRoom(socket);
