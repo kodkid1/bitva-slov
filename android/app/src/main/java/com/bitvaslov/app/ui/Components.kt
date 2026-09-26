@@ -213,6 +213,58 @@ fun avatarAccent(photo: String, avatarId: Int): Color {
  * Титул под ником. При titleId = 0 (или неизвестном) не рисует ничего,
  * чтобы списки игроков не превращались в кашу из пустых строк.
  */
+/** Золотая монетка — рисуется, чтобы не тянуть картинку в ассеты. */
+@Composable
+fun CoinDot(size: Dp = 22.dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(
+                Brush.radialGradient(
+                    listOf(Color(0xFFFFE9A8), AppColors.Warning, Color(0xFFC98A16)),
+                )
+            )
+            .border(1.dp, Color(0xFFFFE9A8).copy(alpha = 0.7f), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(size * 0.52f)
+                .clip(CircleShape)
+                .border(1.dp, Color(0xFF7A5410).copy(alpha = 0.55f), CircleShape),
+        )
+    }
+}
+
+/** Титул игрока — компактный бейдж, а не строчка текста. */
+@Composable
+fun PlayerTitleBadge(
+    titleId: Int,
+    modifier: Modifier = Modifier,
+    color: Color = AppColors.Warning,
+    fontSize: androidx.compose.ui.unit.TextUnit = 11.sp,
+) {
+    val name = TitleCatalog.name(titleId)
+    if (name.isBlank()) return
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(percent = 50))
+            .background(color.copy(alpha = 0.14f))
+            .border(1.dp, color.copy(alpha = 0.30f), RoundedCornerShape(percent = 50))
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    ) {
+        Text(
+            "«$name»",
+            color = color,
+            fontSize = fontSize,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @Composable
 fun PlayerTitle(
     titleId: Int,

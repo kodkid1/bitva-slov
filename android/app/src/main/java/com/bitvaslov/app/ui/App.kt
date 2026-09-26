@@ -573,7 +573,7 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                     PlayerAvatar(user.name, 48.dp, avatarId = user.avatarId, photo = user.photo, online = user.online)
                     Column(Modifier.weight(1f).padding(start = 14.dp)) {
                         Text(user.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                        PlayerTitle(user.titleId)
+                        PlayerTitleBadge(user.titleId)
                         Spacer(Modifier.height(2.dp))
 Text(
                         if (user.online) "В сети" else "Не в сети",
@@ -631,7 +631,7 @@ Text(
                             PlayerAvatar(f.name, 48.dp, avatarId = f.avatarId, photo = f.photo, online = f.online)
                             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                                 Text(f.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                                PlayerTitle(f.titleId)
+                                PlayerTitleBadge(f.titleId)
                                 Spacer(Modifier.height(3.dp))
                                 Text(
                                     if (f.online) "В сети" else "Офлайн",
@@ -711,7 +711,7 @@ Text(
                                 PlayerAvatar(r.name, 48.dp, avatarId = r.avatarId, photo = r.photo)
                                 Column(Modifier.weight(1f).padding(start = 14.dp)) {
                                     Text(r.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                                    PlayerTitle(r.titleId)
+                                    PlayerTitleBadge(r.titleId)
                                     Spacer(Modifier.height(2.dp))
                                     Text("Игр: ${r.games} • Побед: ${r.wins}", fontSize = 14.sp, color = offlineGray)
                                 }
@@ -754,7 +754,7 @@ Text(
                                 PlayerAvatar(r.name, 48.dp, avatarId = r.avatarId, photo = r.photo)
                                 Column(Modifier.weight(1f).padding(start = 14.dp)) {
                                     Text(r.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                                    PlayerTitle(r.titleId)
+                                    PlayerTitleBadge(r.titleId)
                                     Spacer(Modifier.height(2.dp))
                                     Text("Игр: ${r.games} • Побед: ${r.wins}", fontSize = 14.sp, color = offlineGray)
                                 }
@@ -834,8 +834,8 @@ private fun ProfileSheet(state: UiState, p: UserProfile, vm: GameViewModel, back
             // Имя — большими белыми
             Text(p.name, color = white, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             if (p.titleId != 0) {
-                Spacer(Modifier.height(4.dp))
-                PlayerTitle(p.titleId, color = AppColors.Primary, fontSize = 16.sp)
+                Spacer(Modifier.height(6.dp))
+                PlayerTitleBadge(p.titleId, fontSize = 13.sp)
             }
             Spacer(Modifier.height(4.dp))
             // id: сразу после ника
@@ -1110,33 +1110,84 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
 private fun WalletCard(state: UiState, vm: GameViewModel) {
     val wallet = state.wallet
     val next = TitleCatalog.nextAffordable(wallet.coins)
-    NeonCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Монетки", style = MaterialTheme.typography.titleMedium)
-                    Text("🪙 ${wallet.coins}", color = AppColors.Primary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        if (wallet.titleName.isBlank()) "Без титула" else "«${wallet.titleName}»",
-                        color = AppColors.TextSecondary,
-                        fontSize = 12.sp,
-                    )
-                    if (wallet.streak > 0) {
-                        Text("🔥 серия ${wallet.streak} дн.", color = AppColors.TextSecondary, fontSize = 12.sp)
-                    }
-                }
-            }
-            if (next != null) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .glassSurface(RoundedCornerShape(26.dp), alpha = 0.66f)
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CoinDot(34.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
                 Text(
-                    "До «${next.name}» — ${next.price - wallet.coins} монет",
+                    "${wallet.coins}",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                )
+                Text(
+                    "МОНЕТ",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
                     color = AppColors.TextSecondary,
-                    fontSize = 13.sp,
+                    letterSpacing = 1.5.sp,
                 )
             }
-            NeonButton("МАГАЗИН ТИТУЛОВ", { vm.requestShop() }, Modifier.fillMaxWidth())
+            if (wallet.streak > 0) {
+                StatChip("серия ${wallet.streak}", color = AppColors.Warning)
+            }
         }
+
+        if (wallet.titleId != 0) {
+            PlayerTitleBadge(wallet.titleId, fontSize = 12.sp)
+        }
+
+        if (next != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row {
+                    Text(
+                        "До «${next.name}»",
+                        color = AppColors.TextSecondary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        "ещё ${next.price - wallet.coins}",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                ThinProgress(
+                    value = (wallet.coins.toFloat() / next.price).coerceIn(0f, 1f),
+                    color = AppColors.Warning,
+                )
+            }
+        }
+
+        GlassActionButton("МАГАЗИН ТИТУЛОВ", { vm.requestShop() }, Modifier.fillMaxWidth())
+    }
+}
+
+/** Тонкая полоска прогресса — используется в кошельке и магазине. */
+@Composable
+private fun ThinProgress(value: Float, color: Color = AppColors.Primary) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color.White.copy(alpha = 0.10f)),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(value)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(50))
+                .background(color),
+        )
     }
 }
 
@@ -1148,64 +1199,115 @@ private fun ShopScreen(state: UiState, vm: GameViewModel) {
     val busy = state.shopBusy
     val canWatch = activity != null && wallet.videosLeft > 0 && !busy
 
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("МАГАЗИН", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
-            Text("🪙 ${wallet.coins}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AppColors.Primary)
-            Spacer(Modifier.width(8.dp))
-            NeonButton("НАЗАД", { vm.dismissShop() }, height = 40.dp)
-        }
-
-        NeonCard(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            Column(Modifier.padding(16.dp), Arrangement.spacedBy(10.dp)) {
-                Text("Заработать монетки", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Ролик — 10 монет. Сегодня осталось: ${wallet.videosLeft}",
-                    color = AppColors.TextSecondary,
-                    fontSize = 13.sp,
-                )
-                NeonButton(
-                    text = if (wallet.videosLeft > 0) "СМОТРЕТЬ РОЛИК · +10" else "ЛИМИТ НА СЕГОДНЯ",
-                    onClick = { if (canWatch) vm.watchVideoForCoins(activity) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = canWatch,
-                )
+    Box(Modifier.fillMaxSize().background(Color(0xFF0B0B0B))) {
+        Column(Modifier.fillMaxSize()) {
+            // Шапка — как в комнате и настройках
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .clip(TopBarShape)
+                    .background(TopBarColor),
+            ) {
+                Row(
+                    Modifier.fillMaxHeight().padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    GlassCircleButton(onClick = { vm.dismissShop() }, size = 44.dp) {
+                        Image(painterResource(R.drawable.ic_back), null, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        "МАГАЗИН",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CoinDot(20.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "${wallet.coins}",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                    )
+                    Spacer(Modifier.width(16.dp))
+                }
             }
-        }
 
-        Text(
-            "ТИТУЛЫ",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            color = AppColors.TextSecondary,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
-        )
-
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            items(TitleCatalog.all.chunked(2)) { pair ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    pair.forEach { def ->
-                        TitleCard(
-                            def = def,
-                            wallet = wallet,
-                            busy = busy,
-                            canEarn = canWatch,
-                            modifier = Modifier.weight(1f),
-                            onBuy = {
-                                // хватает денег — покупаем сразу, иначе смотрим ролик
-                                if (wallet.coins >= def.price) vm.buyTitle(def.id) else if (canWatch) vm.watchVideoForCoins(activity, def.id)
-                            },
-                            onEquip = { vm.equipTitle(def.id) },
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .glassSurface(RoundedCornerShape(26.dp), alpha = 0.66f)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Заработать",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White,
+                        )
+                        Text(
+                            "Ролик — 10 монет",
+                            color = AppColors.TextSecondary,
+                            fontSize = 13.sp,
                         )
                     }
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    Text(
+                        "осталось ${wallet.videosLeft} из 20",
+                        color = if (wallet.videosLeft > 0) Color.White else AppColors.TextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                ThinProgress(
+                    value = wallet.videosLeft / 20f,
+                    color = if (wallet.videosLeft > 0) AppColors.Warning else Color.White.copy(alpha = 0.25f),
+                )
+                GlassActionButton(
+                    text = if (wallet.videosLeft > 0) "СМОТРЕТЬ РОЛИК" else "ЛИМИТ НА СЕГОДНЯ",
+                    onClick = { if (canWatch) vm.watchVideoForCoins(activity) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            Text(
+                "ТИТУЛЫ",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextSecondary,
+                letterSpacing = 1.5.sp,
+                modifier = Modifier.padding(start = 24.dp, top = 22.dp, bottom = 10.dp),
+            )
+
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(TitleCatalog.all.chunked(2)) { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        pair.forEach { def ->
+                            TitleCard(
+                                def = def,
+                                wallet = wallet,
+                                busy = busy,
+                                canEarn = canWatch,
+                                modifier = Modifier.weight(1f),
+                                onBuy = {
+                                    // хватает денег — покупаем сразу, иначе смотрим ролик
+                                    if (wallet.coins >= def.price) vm.buyTitle(def.id) else if (canWatch) vm.watchVideoForCoins(activity, def.id)
+                                },
+                                onEquip = { vm.equipTitle(def.id) },
+                            )
+                        }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -1225,26 +1327,87 @@ private fun TitleCard(
     val owned = wallet.owns(def.id)
     val equipped = wallet.titleId == def.id
     val canBuy = wallet.coins >= def.price
-    NeonCard(modifier) {
-        Column(Modifier.padding(14.dp), Arrangement.spacedBy(8.dp)) {
-            Text(
-                "«${def.name}»",
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                color = Color.White,
-                maxLines = 2,
+    Column(
+        modifier
+            .glassSurface(
+                RoundedCornerShape(22.dp),
+                tint = if (equipped) AppColors.Warning.copy(alpha = 0.16f) else Color.Transparent,
+                alpha = if (equipped) 0.85f else 0.60f,
             )
-            when {
-                equipped -> Text("НАДЕТ", color = AppColors.Primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                owned -> NeonButton("НАДЕТЬ", onEquip, Modifier.fillMaxWidth(), enabled = !busy, height = 44.dp)
-                canBuy -> NeonButton("КУПИТЬ · ${def.price}", onBuy, Modifier.fillMaxWidth(), enabled = !busy, height = 44.dp)
-                else -> Column(Modifier.fillMaxWidth(), Arrangement.spacedBy(6.dp)) {
-                    Text("${def.price} монет", color = AppColors.TextSecondary, fontSize = 12.sp)
-                    // не хватает монет — тот же ролик, что и в шапке
-                    NeonButton("СМОТРЕТЬ · +10", onBuy, Modifier.fillMaxWidth(), enabled = canEarn && !busy, height = 44.dp)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            def.name,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+            color = if (equipped) AppColors.Warning else Color.White,
+            maxLines = 2,
+            minLines = 2,
+        )
+        Spacer(Modifier.weight(1f))
+        when {
+            equipped -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(AppColors.Warning),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("НАДЕТ", color = AppColors.Warning, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            }
+            owned -> GlassMiniButton("НАДЕТЬ", onEquip, !busy)
+            canBuy -> GlassMiniButton("КУПИТЬ · ${def.price}", onBuy, !busy, filled = true)
+            else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CoinDot(14.dp)
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        "${def.price}",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
+                ThinProgress((wallet.coins.toFloat() / def.price).coerceIn(0f, 1f), color = AppColors.Warning)
+                // не хватает монет — тот же ролик, что и в шапке
+                GlassMiniButton("СМОТРЕТЬ +10", onBuy, canEarn && !busy)
             }
         }
+    }
+}
+
+/** Компактная стеклянная кнопка для карточек магазина. */
+@Composable
+private fun GlassMiniButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    filled: Boolean = false,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                when {
+                    !enabled -> Color.White.copy(alpha = 0.06f)
+                    filled -> AppColors.Primary
+                    else -> Color.White.copy(alpha = 0.10f)
+                }
+            )
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.5.sp,
+            color = if (enabled) Color.White else AppColors.TextDisabled,
+        )
     }
 }
 
@@ -1839,7 +2002,7 @@ private fun RoomScreen(state: UiState, vm: GameViewModel) {
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            PlayerTitle(p.titleId)
+                            PlayerTitleBadge(p.titleId)
                             Text(
                                 if (p.id == room.hostId) "Создатель" else "Игрок",
                                 fontSize = 14.sp,
@@ -2201,7 +2364,7 @@ private fun WinnerPlate(winner: WinnerInfo, isMe: Boolean) {
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(3.dp))
-            PlayerTitle(winner.titleId, color = AppColors.Primary, fontSize = 13.sp)
+            PlayerTitleBadge(winner.titleId, fontSize = 13.sp)
             Text(
                 if (isMe) "Это ты" else "Победитель",
                 fontSize = 13.sp,
