@@ -1,5 +1,8 @@
 package com.bitvaslov.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.delay
@@ -12,6 +15,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class GameViewModel : ViewModel() {
+
+    var appContext: Context? = null
 
     private val _ui = MutableStateFlow(
         UiState(
@@ -29,7 +34,6 @@ class GameViewModel : ViewModel() {
     private var roomListJob: kotlinx.coroutines.Job? = null
     private var _isActive = true
     private var lastCreateAt = 0L
-    private var autoStarted = false
 
     init {
         _ui.update {
@@ -52,8 +56,6 @@ class GameViewModel : ViewModel() {
     }
 
     fun autoConnect() {
-        if (autoStarted) return
-        autoStarted = true
         val name = ProfileStore.name.ifBlank {
             "Игрок" + ProfileStore.playerId.takeLast(4)
         }
@@ -75,7 +77,8 @@ class GameViewModel : ViewModel() {
                 delay(3000)
                 when (_ui.value.screen) {
                     Screen.LOBBY -> client?.refreshRooms()
-                    Screen.ROOM -> client?.requestRoom()
+                    // во время партии и на экране итогов тоже опрашиваем, иначе очки и реконнект не видны
+                    Screen.ROOM, Screen.GAME, Screen.RESULT -> client?.requestRoom()
                     else -> Unit
                 }
             }
@@ -83,6 +86,17 @@ class GameViewModel : ViewModel() {
     }
 
     fun setServerUrl(url: String) = _ui.update { it.copy(serverUrl = url) }
+
+    fun consumeInvite() {
+        if (!DeepLink.hasInvite) return
+        val roomId = DeepLink.roomId
+        DeepLink.clear()
+        if (!roomId.isNullOrBlank()) joinRoomById(roomId)
+    }
+
+    fun notifyNow() {
+        if (DeepLink.hasInvite) consumeInvite()
+    }
 
     fun setMyName(name: String) {
         _ui.update { it.copy(myName = name) }
@@ -113,7 +127,13 @@ class GameViewModel : ViewModel() {
         it.copy(screen = Screen.LOBBY, pendingRoomId = null, pendingRoomName = "", passwordFails = 0)
     }
 
-    fun copyRoomPassword(password: String) = _ui.update { it.copy(toast = "Пароль скопирован") }
+    fun copyRoomPassword(password: String) {
+        if (password.isBlank()) return
+        val ctx = appContext ?: return
+        val clip = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        clip.setPrimaryClip(ClipData.newPlainText("Пароль комнаты", password))
+        _ui.update { it.copy(toast = "Пароль скопирован") }
+    }
 
     fun createRoom(
         roomName: String,
@@ -170,7 +190,8 @@ class GameViewModel : ViewModel() {
         val roomId = _ui.value.pendingRoomId ?: return
         val value = password.trim()
         if (value.isEmpty()) return
-        _ui.update { it.copy(passwordFails = it.passwordFails + 1) }
+        // счётчик не растёт на каждый тап: он увеличивается только по факту ошибки от сервера
+        _ui.update { it.copy(error = null, toast = null) }
         client?.joinRoom(
             _ui.value.myName,
             roomId = roomId,
@@ -195,6 +216,7 @@ class GameViewModel : ViewModel() {
     fun setSoundOn(on: Boolean) {
         SettingsStore.setSound(on)
         _ui.update { it.copy(soundOn = on) }
+        if (on) PlayFeedback.turn()
     }
 
     fun setVolume(value: Float) {
@@ -294,17 +316,25 @@ class GameViewModel : ViewModel() {
                     client?.setActive(_isActive)
                     client?.login(_ui.value.myId, _ui.value.myName.trim(), _ui.value.myAvatarId, _ui.value.myPhoto)
                     client?.requestFriends()
-                    if (DeepLink.hasInvite) {
-                        val roomId = DeepLink.roomId
-                        DeepLink.clear()
-                        val name = _ui.value.myName.trim()
-                        if (!roomId.isNullOrBlank()) joinRoomById(roomId)
-                    }
+                    consumeInvite()
+                    loadStats()
                 }
 
                 "disconnected" -> {
                     _ui.update { s ->
-                        s.copy(offline = true, toast = "Соединение потеряно, переподключаюсь...", winner = null)
+                        s.copy(offline = true, toast = "Соединение потеряно, переподключаюсь...")
+                    }
+                }
+
+                "connectError" -> {
+                    val msg = data as? String ?: "Не удалось подключиться к серверу"
+                    _ui.update { s ->
+                        s.copy(
+                            offline = true,
+                            error = msg,
+                            toast = msg,
+                            screen = if (s.room == null) Screen.CONNECT else s.screen,
+                        )
                     }
                 }
 
@@ -335,20 +365,28 @@ class GameViewModel : ViewModel() {
 
                 "roomList" -> {
                     val arr = data as? JSONArray ?: return@launch
-                    val rooms = (0 until arr.length()).map { RoomSummary.fromJson(arr.getJSONObject(it)) }
+                    val rooms = buildList {
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.optJSONObject(i) ?: continue
+                            runCatching { RoomSummary.fromJson(obj) }.getOrNull()?.let(::add)
+                        }
+                    }
                     _ui.update { it.copy(rooms = rooms, offline = false) }
                 }
 
                 "roomUpdate" -> {
                     val o = data as? JSONObject ?: return@launch
-                    val room = RoomState.fromJson(o)
+                    val room = runCatching { RoomState.fromJson(o) }.getOrNull() ?: return@launch
                     _ui.update { s ->
                         s.copy(
                             room = room,
                             offline = false,
-                            screen = if (room.state == "lobby") Screen.ROOM else s.screen,
-                            game = null,
-                            winner = null,
+                            screen = when {
+                                room.state == "lobby" && s.screen != Screen.ROOM -> Screen.ROOM
+                                else -> s.screen
+                            },
+                            // game/winner намеренно не трогаем: сервер шлёт roomUpdate и во время партии,
+                            // обнуление давало чёрный кадр на экране игры
                             error = null,
                         )
                     }
@@ -356,16 +394,18 @@ class GameViewModel : ViewModel() {
 
                 "gameStarted" -> {
                     _ui.update { it.copy(screen = Screen.GAME, winner = null, error = null, toast = "Игра началась!") }
+                    PlayFeedback.started()
                 }
 
                 "gameUpdate" -> {
                     val o = data as? JSONObject ?: return@launch
-                    val raw = GameState.fromJson(o)
+                    val raw = runCatching { GameState.fromJson(o) }.getOrNull() ?: return@launch
                     val deadlineAt = System.currentTimeMillis() + raw.endIn
                     _ui.update { s ->
                         s.copy(
                             game = raw.copy(endIn = deadlineAt),
-                            screen = Screen.GAME,
+                            // экран переключаем только если ещё не в игре, иначе будет чёрный кадр
+                            screen = if (s.screen == Screen.GAME || s.screen == Screen.RESULT) s.screen else Screen.GAME,
                             error = null,
                             toast = null,
                         )
@@ -385,6 +425,7 @@ class GameViewModel : ViewModel() {
                     _ui.update {
                         it.copy(winner = w, screen = Screen.RESULT)
                     }
+                    PlayFeedback.result()
                 }
 
                 "wordAccepted" -> {
@@ -394,21 +435,25 @@ class GameViewModel : ViewModel() {
                     _ui.update {
                         it.copy(error = null, toast = "➤ +$points очков" + if (combo > 1) "  (комбо ×$combo)" else "")
                     }
+                    PlayFeedback.turn()
                 }
 
                 "wordError" -> {
                     val msg = (data as? JSONObject)?.optString("message", "Ошибка") ?: "Ошибка"
-                    _ui.update { it.copy(error = msg) }
+                    _ui.update { it.copy(error = msg, toast = msg) }
+                    PlayFeedback.error()
                 }
 
                 "playerEliminated" -> {
                     val name = (data as? JSONObject)?.optString("name", "")
                     _ui.update { it.copy(toast = "$name выбыл по таймеру") }
+                    PlayFeedback.error()
                 }
 
                 "skipTurn" -> {
                     val name = (data as? JSONObject)?.optString("name", "")
                     _ui.update { it.copy(toast = "$name не успел — 0 очков") }
+                    PlayFeedback.turn()
                 }
 
                 "errorMessage" -> {
@@ -426,7 +471,18 @@ class GameViewModel : ViewModel() {
                 "_ack_join" -> {
                     val o = data as? JSONObject
                     if (o?.optBoolean("ok", false) != true) {
-                        _ui.update { it.copy(error = o?.optString("error", "Не удалось войти")) }
+                        val msg = o?.optString("error", "Не удалось войти") ?: "Не удалось войти"
+                        _ui.update {
+                            // считаем неудачную попытку только здесь, по реальному отказу сервера
+                            val inPassword = it.screen == Screen.PASSWORD
+                            it.copy(
+                                error = msg,
+                                toast = msg,
+                                passwordFails = if (inPassword) it.passwordFails + 1 else it.passwordFails,
+                            )
+                        }
+                    } else {
+                        _ui.update { it.copy(error = null, passwordFails = 0) }
                     }
                 }
 
@@ -459,9 +515,9 @@ class GameViewModel : ViewModel() {
                     val fArr = o.optJSONArray("friends") ?: JSONArray()
                     val inArr = o.optJSONArray("incoming") ?: JSONArray()
                     val outArr = o.optJSONArray("outgoing") ?: JSONArray()
-                    val friends = (0 until fArr.length()).map { Friend.fromJson(fArr.getJSONObject(it)) }
-                    val incoming = (0 until inArr.length()).map { FriendRef.fromJson(inArr.getJSONObject(it)) }
-                    val outgoing = (0 until outArr.length()).map { FriendRef.fromJson(outArr.getJSONObject(it)) }
+                    val friends = fArr.mapObjects { Friend.fromJson(it) }
+                    val incoming = inArr.mapObjects { FriendRef.fromJson(it) }
+                    val outgoing = outArr.mapObjects { FriendRef.fromJson(it) }
                     _ui.update {
                         it.copy(
                             friends = friends.filter { f -> f.id.isNotBlank() },
@@ -490,7 +546,7 @@ class GameViewModel : ViewModel() {
 
                 "userSearchResult" -> {
                     val arr = data as? JSONArray ?: return@launch
-                    val list = (0 until arr.length()).map { UserSummary.fromJson(arr.getJSONObject(it)) }
+                    val list = arr.mapObjects { UserSummary.fromJson(it) }
                     _ui.update { it.copy(searchResults = list) }
                 }
 
@@ -530,6 +586,15 @@ class GameViewModel : ViewModel() {
         client = null
         super.onCleared()
     }
+}
+
+private inline fun <T> JSONArray.mapObjects(factory: (JSONObject) -> T): List<T> {
+    val out = ArrayList<T>(length())
+    for (i in 0 until length()) {
+        val obj = optJSONObject(i) ?: continue
+        runCatching { factory(obj) }.getOrNull()?.let(out::add)
+    }
+    return out
 }
 
 data class UiState(

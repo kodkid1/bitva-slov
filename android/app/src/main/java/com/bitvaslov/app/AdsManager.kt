@@ -1,7 +1,10 @@
 package com.bitvaslov.app
 
+import android.app.Activity
 import android.content.Context
+import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.interstitial.InterstitialAd
@@ -15,18 +18,23 @@ object AdsManager {
     private const val TEST_INTERSTITIAL = "ca-app-pub-3940256099942544/1033173712"
     private const val TEST_REWARDED = "ca-app-pub-3940256099942544/5224354917"
 
+    private var appContext: Context? = null
     private var interstitial: InterstitialAd? = null
     private var rewarded: RewardedAd? = null
 
     fun init(context: Context) {
-        MobileAds.initialize(context)
-        loadInterstitial(context)
-        loadRewarded(context)
+        val ctx = context.applicationContext
+        if (appContext != null) return
+        appContext = ctx
+        MobileAds.initialize(ctx)
+        loadInterstitial()
+        loadRewarded()
     }
 
-    fun loadInterstitial(context: Context) {
+    fun loadInterstitial() {
+        val ctx = appContext ?: return
         InterstitialAd.load(
-            context,
+            ctx,
             TEST_INTERSTITIAL,
             AdRequest.Builder().build(),
             object : InterstitialAdLoadCallback() {
@@ -41,9 +49,10 @@ object AdsManager {
         )
     }
 
-    fun loadRewarded(context: Context) {
+    fun loadRewarded() {
+        val ctx = appContext ?: return
         RewardedAd.load(
-            context,
+            ctx,
             TEST_REWARDED,
             AdRequest.Builder().build(),
             object : RewardedAdLoadCallback() {
@@ -58,43 +67,51 @@ object AdsManager {
         )
     }
 
-    fun showInterstitial(activity: android.app.Activity, onDone: () -> Unit = {}) {
+    fun showInterstitial(activity: Activity, onDone: () -> Unit = {}) {
         val ad = interstitial
+        // сбрасываем до показа, чтобы повторный вызов не показал то же самое объявление дважды
+        interstitial = null
         if (ad == null) { onDone(); return }
-        ad.fullScreenContentCallback = object : com.google.android.gms.ads.FullScreenContentCallback() {
+        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdDismissedFullScreenContent() {
-                interstitial = null
-                loadInterstitial(activity)
+                loadInterstitial()
                 onDone()
             }
 
-            override fun onAdFailedToShowFullScreenContent(adError: com.google.android.gms.ads.AdError) {
-                interstitial = null
-                loadInterstitial(activity)
+            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                loadInterstitial()
                 onDone()
             }
         }
-        ad.show(activity)
+        runCatching { ad.show(activity) }.onFailure {
+            loadInterstitial()
+            onDone()
+        }
     }
 
-    fun showRewarded(activity: android.app.Activity, onReward: () -> Unit = {}) {
+    fun showRewarded(activity: Activity, onReward: () -> Unit = {}) {
         val ad = rewarded
+        // сбрасываем до показа: раньше onReward срабатывал дважды — в onAdDismissed и в show{}
+        rewarded = null
         if (ad == null) { onReward(); return }
-        ad.fullScreenContentCallback = object : com.google.android.gms.ads.FullScreenContentCallback() {
+        var granted = false
+        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdDismissedFullScreenContent() {
-                rewarded = null
-                loadRewarded(activity)
-                onReward()
+                loadRewarded()
+                if (granted) onReward()
             }
 
-            override fun onAdFailedToShowFullScreenContent(adError: com.google.android.gms.ads.AdError) {
-                rewarded = null
-                loadRewarded(activity)
-                onReward()
+            override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                loadRewarded()
             }
         }
-        ad.show(activity) {
-            onReward()
+        runCatching {
+            ad.show(activity) {
+                granted = true
+                onReward()
+            }
+        }.onFailure {
+            loadRewarded()
         }
     }
 }

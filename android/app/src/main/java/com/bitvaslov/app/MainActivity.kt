@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity() {
         SettingsStore.init(this)
         ProfileStore.init(this)
         AdsManager.init(this)
+        PlayFeedback.init(this)
         handleIntent(intent)
         requestNotificationPermission()
         setContent {
@@ -64,10 +65,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val extras = intent?.extras ?: return
-        if (extras.getString("type") != "invite") return
-        DeepLink.roomId = extras.getString("roomId")
-        DeepLink.code = extras.getString("code")
+        if (intent == null) return
+        // 1) приглашение как extras: type=invite, roomId=...
+        val extras = intent.extras
+        if (extras?.getString("type") == "invite") {
+            val roomId = extras.getString("roomId")
+            if (!roomId.isNullOrBlank()) DeepLink.roomId = roomId
+            return
+        }
+        // 2) приглашение как ссылка: bitva://room/<roomId>
+        val data = intent.data ?: return
+        if (data.scheme == "bitva" && data.host == "room") {
+            val roomId = data.lastPathSegment ?: data.getQueryParameter("roomId")
+            if (!roomId.isNullOrBlank()) DeepLink.roomId = roomId
+        }
     }
 
     private fun requestNotificationPermission() {

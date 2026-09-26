@@ -20,6 +20,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.delay
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -29,6 +31,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.*
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
@@ -66,8 +71,35 @@ fun App(vm: GameViewModel = viewModel()) {
     val snackbar = remember { SnackbarHostState() }
     var bottomTab by remember { mutableStateOf(0) }
     val backdrop = rememberLayerBackdrop()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> vm.setActive(true)
+                Lifecycle.Event.ON_STOP -> vm.setActive(false)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     LaunchedEffect(Unit) { vm.autoConnect() }
+    // приглашение может прийти, когда приложение уже запущено (onNewIntent) —
+    // забираем его из DeepLink, как только экран снова активен
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1500)
+            vm.notifyNow()
+        }
+    }
     LaunchedEffect(state.toast) { state.toast?.let { snackbar.showSnackbar(it); vm.clearToast() } }
+    // ошибка висит на экране и сама исчезает, чтобы не перекрывать интерфейс
+    LaunchedEffect(state.error) {
+        if (state.error != null) {
+            delay(4000)
+            vm.clearError()
+        }
+    }
 
     Scaffold(
         containerColor = AppColors.Background,
@@ -86,6 +118,13 @@ fun App(vm: GameViewModel = viewModel()) {
                     Screen.ROOM -> RoomScreen(state, vm)
                     Screen.GAME -> GameScreen(state, vm)
                     Screen.RESULT -> ResultScreen(state, vm)
+                }
+                // раньше UiState.error писался, но нигде не отображался — все ошибки были немыми
+                state.error?.let { msg ->
+                    ErrorBanner(
+                        message = msg,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp, start = 16.dp, end = 16.dp),
+                    )
                 }
             }
         }
@@ -970,6 +1009,44 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
                 OutlinedButton({ picker.launch("image/*") }) { Text("ФОТО", color=AppColors.Primary) }
                 if(state.myPhoto.isNotBlank()) OutlinedButton(vm::clearPhoto) { Text("УБРАТЬ", color=AppColors.Danger) }
             }
+            // выбор аватара из палитры — раньше аватар нельзя было поменять
+            Text(
+                "АВАТАР",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.TextSecondary,
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp),
+            )
+            LazyRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(ProfileStore.AVATAR_COUNT) { id ->
+                    val selected = state.myAvatarId == id
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(avatarColor(id))
+                            .border(
+                                width = if (selected) 3.dp else 0.dp,
+                                color = if (selected) Color.White else Color.Transparent,
+                                shape = CircleShape,
+                            )
+                            .clickable { vm.setAvatar(id) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (selected) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
+                }
+            }
             OutlinedTextField(nameDraft, {nameDraft=it}, label={Text("Имя")}, singleLine=true, shape=RoundedCornerShape(18.dp), modifier=Modifier.fillMaxWidth().padding(top=16.dp))
             NeonButton("СОХРАНИТЬ", { vm.setMyName(nameDraft) }, Modifier.fillMaxWidth().padding(top=8.dp))
         }
@@ -1002,7 +1079,17 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
 }
 
 private fun LazyListScope.roomsItems(state: UiState, vm: GameViewModel) {
-    items(state.rooms, key = { it.id }) { room -> RoomCard(room.name, room.players, room.maxPlayers, room.timer, room.mode, onJoin = { vm.joinRoomById(room.id) }) }
+    items(state.rooms, key = { it.id }) { room ->
+        RoomCard(
+            room.name,
+            room.players,
+            room.maxPlayers,
+            room.timer,
+            room.mode,
+            isPrivate = room.isPrivate,
+            onJoin = { vm.joinRoomById(room.id) },
+        )
+    }
     if(state.rooms.isEmpty()) item { Box(Modifier.fillMaxWidth().padding(vertical=24.dp), Alignment.Center) { Text("Пока пусто...", color=AppColors.TextSecondary) } }
 }
 
@@ -1221,7 +1308,7 @@ private fun CreateRoomScreen(state: UiState, vm: GameViewModel) {
                                         ),
                                         singleLine = true,
                                         visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
-                                        cursorBrush = SolidColor(Color(0xFFFFC55C)),
+                                        cursorBrush = SolidColor(AppColors.Primary),
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                     if (password.isEmpty()) {
@@ -1238,7 +1325,7 @@ private fun CreateRoomScreen(state: UiState, vm: GameViewModel) {
                                     if (hidden) "Показать" else "Скрыть",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFFFC55C),
+                                    color = AppColors.Primary,
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(12.dp))
                                         .clickable(
@@ -1384,7 +1471,7 @@ private fun PasswordScreen(state: UiState, vm: GameViewModel) {
                     else if (locked) "Слишком много попыток. Попроси пароль у создателя"
                     else "Введи пароль, который задал создатель комнаты",
                     fontSize = 15.sp,
-                    color = if (locked) Color(0xFFFFC55C) else Color(0xFF8E8E93),
+                    color = if (locked) AppColors.Primary else Color(0xFF8E8E93),
                 )
                 Spacer(Modifier.height(28.dp))
                 Box(
@@ -1408,7 +1495,7 @@ private fun PasswordScreen(state: UiState, vm: GameViewModel) {
                         ),
                         singleLine = true,
                         visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
-                        cursorBrush = SolidColor(Color(0xFFFFC55C)),
+                        cursorBrush = SolidColor(AppColors.Primary),
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (password.isEmpty() && !locked) {
@@ -1426,7 +1513,7 @@ private fun PasswordScreen(state: UiState, vm: GameViewModel) {
                         if (hidden) "Показать" else "Скрыть",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFFFFC55C),
+                        color = AppColors.Primary,
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
                             .clickable(
@@ -1626,7 +1713,7 @@ private fun RoomScreen(state: UiState, vm: GameViewModel) {
                         modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
                     )
                 }
-                item { RoomSettingRow("Режим", roomModeLabel(room.mode)) }
+                item { RoomSettingRow("Режим", modeLabel(room.mode)) }
                 item { RoomSettingRow("Время на ход", "${room.turnSecondsOrTimer()} сек") }
                 item { RoomSettingRow("Минимальная длина", if (room.minWordLen > 0) "${room.minWordLen}+ букв" else "любая") }
                 item { RoomSettingRow("Тема слов", gameThemeTitle(room.theme).ifBlank { "Любая" }) }
@@ -1678,14 +1765,6 @@ private fun RoomScreen(state: UiState, vm: GameViewModel) {
 }
 
 private fun RoomState.turnSecondsOrTimer(): Int = timer
-
-private fun roomModeLabel(mode: String): String = when (mode) {
-    "blitz" -> "Блиц"
-    "marathon" -> "Марафон"
-    "duel" -> "Дуэль"
-    "teams" -> "2 на 2"
-    else -> "Классика"
-}
 
 @Composable
 private fun RoomSettingRow(label: String, value: String) {
@@ -1787,6 +1866,13 @@ private fun GameScreen(state: UiState, vm: GameViewModel) {
                     accent = Color(state.gameAccent),
                 )
             }
+            Spacer(Modifier.height(10.dp))
+            // табло очков: раньше очки были видны только в финале, а выбывшие — нигде
+            ScoreStrip(
+                players = players,
+                scores = game.scores,
+                turnPlayerId = game.turnPlayerId,
+            )
             Spacer(Modifier.weight(1f))
             GameTurnArea(
                 letter = game.requiredLetter,

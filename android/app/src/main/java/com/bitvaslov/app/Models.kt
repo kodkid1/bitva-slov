@@ -137,14 +137,12 @@ data class RoomInvite(
 
 object DeepLink {
     var roomId: String? = null
-    var code: String? = null
 
     fun clear() {
         roomId = null
-        code = null
     }
 
-    val hasInvite: Boolean get() = !roomId.isNullOrBlank() || !code.isNullOrBlank()
+    val hasInvite: Boolean get() = !roomId.isNullOrBlank()
 }
 
 data class Player(
@@ -188,7 +186,9 @@ data class RoomState(
     companion object {
         fun fromJson(o: JSONObject): RoomState {
             val arr = o.optJSONArray("players") ?: JSONArray()
-            val players = (0 until arr.length()).map { Player.fromJson(arr.getJSONObject(it)) }
+            val players = (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { runCatching { Player.fromJson(it) }.getOrNull() }
+            }
             val s = o.optJSONObject("settings")
             
             // Пытаемся взять настройки из вложенного объекта settings или из корня
@@ -298,7 +298,12 @@ data class GameState(
         }
     }
 
-    val myTurn: Boolean get() = turnPlayerId == MyIds.current
+    // без проверки на пустоту "" == "" давал true, и поле ввода включалось не в свой ход
+    val myTurn: Boolean get() {
+        val me = MyIds.current
+        val current = turnPlayerId
+        return !me.isNullOrBlank() && !current.isNullOrBlank() && current == me
+    }
 }
 
 data class WinnerInfo(

@@ -182,6 +182,15 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
             onEvent("disconnected", null)
         }
 
+        s.on(Socket.EVENT_CONNECT_ERROR) { args ->
+            val err = args.firstOrNull()
+            onEvent("connectError", (err as? Exception)?.message ?: "Не удалось подключиться к серверу")
+        }
+
+        s.on("reconnect_failed") {
+            onEvent("connectError", "Не удалось переподключиться к серверу")
+        }
+
         s.on("connected") { args ->
             val o = args.firstOrNull() as? JSONObject
             MyIds.current = o?.optString("id")

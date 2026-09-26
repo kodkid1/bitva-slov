@@ -9,24 +9,26 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
+// Единый набор цветов. Раньше тут был зелёный (#00E5A0), а весь интерфейс
+// рисовался фиолетовым — из-за этого AppColors.* и код расходились.
 object AppColors {
     val Background = Color(0xFF000000)
-    val BackgroundSecondary = Color(0xFF111633)
-    val BackgroundGradientEnd = Color(0xFF1B1240)
-    val Surface = Color(0xFF171C38)
-    val SurfaceElevated = Color(0xFF20264A)
-    val Border = Color(0xFF30365F)
-    val Primary = Color(0xFF00E5A0)
-    val PrimaryDark = Color(0xFF00C98D)
-    val Secondary = Color(0xFF7C5CFF)
+    val BackgroundSecondary = Color(0xFF161618)
+    val BackgroundGradientEnd = Color(0xFF0A0A0A)
+    val Surface = Color(0xFF151517)
+    val SurfaceElevated = Color(0xFF1C1C1E)
+    val Border = Color(0xFF2A2A2D)
+    val Primary = Color(0xFF6B33D6)
+    val PrimaryDark = Color(0xFF4B22A0)
+    val Secondary = Color(0xFFB794F6)
     val Warning = Color(0xFFFFB547)
     val Danger = Color(0xFFFF4D6D)
-    val TextPrimary = Color(0xFFF5F7FF)
-    val TextSecondary = Color(0xFF8F97B8)
-    val TextDisabled = Color(0xFF555D80)
-    val ButtonDisabled = Color(0xFF292E49)
-    val ButtonDisabledText = Color(0xFF646B88)
-    val ContentDark = Color(0xFF07131A)
+    val TextPrimary = Color(0xFFFFFFFF)
+    val TextSecondary = Color(0xFF8E8E93)
+    val TextDisabled = Color(0xFF48484A)
+    val ButtonDisabled = Color(0xFF1C1C1E)
+    val ButtonDisabledText = Color(0xFF636366)
+    val ContentDark = Color(0xFF0A0A0A)
 }
 
 val AppTypography = androidx.compose.material3.Typography(
