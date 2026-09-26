@@ -585,12 +585,12 @@ function publicRoomInfo(room) {
   };
 }
 
-function roomPayload(room) {
+function roomPayload(room, withPassword) {
   return {
     id: room.id,
     name: room.name,
     isPrivate: room.isPrivate,
-    password: room.hostId === socket.id ? room.password || '' : '',
+    password: withPassword ? room.password || '' : '',
     hostId: room.hostId,
     timer: room.timer,
     maxPlayers: room.maxPlayers,
@@ -633,8 +633,11 @@ function gamePayload(room) {
   };
 }
 
-function sendRoom(room) {
-  io.to(room.id).emit('roomUpdate', roomPayload(room));
+function sendRoom(room, viewerId) {
+  io.to(room.id).emit('roomUpdate', roomPayload(room, false));
+  if (viewerId && room.hostId === viewerId && room.isPrivate) {
+    io.to(viewerId).emit('roomUpdate', roomPayload(room, true));
+  }
 }
 
 function sendGame(room) {
@@ -711,7 +714,7 @@ function handleTimeout(room) {
     name: player.name,
     reason: 'timeout',
   });
-  sendRoom(room);
+  sendRoom(room, socket.id);
   if (checkGameOver(room)) return;
   room.turnPlayerId = nextAliveId(room, room.turnPlayerId);
   startTurn(room);
@@ -755,7 +758,7 @@ function finishGame(room, winnerPlayer) {
   }
   room.winner = winner;
   recordGame(room.players, winner ? winner.id : null);
-  sendRoom(room);
+  sendRoom(room, socket.id);
   sendGame(room);
   io.to(room.id).emit('gameOver', {
     winner,
@@ -802,7 +805,7 @@ function beginGame(room) {
   });
   room.requiredLetter = START_LETTERS[Math.floor(Math.random() * START_LETTERS.length)];
   room.turnPlayerId = room.players[Math.floor(Math.random() * room.players.length)].id;
-  sendRoom(room);
+  sendRoom(room, socket.id);
   io.to(room.id).emit('gameStarted', {});
   startTurn(room);
   sendPushToRoom(
@@ -843,7 +846,7 @@ function leaveRoom(socket) {
     }
   }
 
-  sendRoom(room);
+  sendRoom(room, socket.id);
   broadcastRoomList();
 }
 
@@ -913,7 +916,7 @@ io.on('connection', (socket) => {
     socket.join(room.id);
 
     if (typeof callback === 'function') callback({ ok: true, roomId: room.id });
-    sendRoom(room);
+    sendRoom(room, socket.id);
     broadcastRoomList();
   });
 
@@ -929,7 +932,7 @@ io.on('connection', (socket) => {
     if (typeof data.randomTimer === 'boolean') s.randomTimer = data.randomTimer;
     if (typeof data.acceleration === 'boolean') s.acceleration = data.acceleration;
     if (typeof data.theme === 'string') s.theme = THEMES[data.theme] ? data.theme : '';
-    sendRoom(room);
+    sendRoom(room, socket.id);
     broadcastRoomList();
   });
 
@@ -973,7 +976,7 @@ io.on('connection', (socket) => {
     socket.join(room.id);
 
     if (typeof callback === 'function') callback({ ok: true, roomId: room.id });
-    sendRoom(room);
+    sendRoom(room, socket.id);
     broadcastRoomList();
     sendPushToRoom(room, 'Новый игрок', playerName + ' зашёл в комнату', socket.id);
   });
