@@ -467,6 +467,68 @@ const WORDS_PATH = path.join(__dirname, 'data', 'words.txt');
 let wordBuf = null;
 let wordOffsets = null;
 
+const LEAVE_GRACE_MS = 90 * 1000;
+const pendingLeaves = new Map();
+
+function scheduleLeave(socketId) {
+  const info = players.get(socketId);
+  if (!info) return;
+  const room = rooms.get(info.roomId);
+  const key = room ? room.id + '|' + info.userId : null;
+  const existing = pendingLeaves.get(key || socketId);
+  if (existing) clearTimeout(existing.timer);
+  if (room) {
+    const player = room.players.find((p) => p.id === socketId);
+    if (player) player.away = true;
+    sendRoom(room, null);
+  }
+  const timer = setTimeout(() => {
+    pendingLeaves.delete(key || socketId);
+    leaveRoomById(socketId);
+  }, LEAVE_GRACE_MS);
+  if (typeof timer.unref === 'function') timer.unref();
+  pendingLeaves.set(key || socketId, { socketId, roomId: info.roomId, userId: info.userId, timer });
+}
+
+function reattachAfterReconnect(userId) {
+  if (!userId) return false;
+  for (const [key, rec] of pendingLeaves) {
+    if (rec.userId !== userId) continue;
+    const room = rooms.get(rec.roomId);
+    if (!room) {
+      clearTimeout(rec.timer);
+      pendingLeaves.delete(key);
+      continue;
+    }
+    const index = room.players.findIndex((p) => p.id === rec.socketId);
+    if (index < 0) {
+      clearTimeout(rec.timer);
+      pendingLeaves.delete(key);
+      continue;
+    }
+    clearTimeout(rec.timer);
+    pendingLeaves.delete(key);
+    const oldSocket = io.sockets.sockets.get(rec.socketId);
+    if (oldSocket) {
+      oldSocket.emit('roomReplaced');
+      oldSocket.leave(room.id);
+    }
+    players.delete(rec.socketId);
+    const player = room.players[index];
+    player.id = socket.id;
+    player.away = false;
+    room.players[index] = player;
+    if (room.hostId === rec.socketId) room.hostId = socket.id;
+    if (room.turnPlayerId === rec.socketId) room.turnPlayerId = socket.id;
+    players.set(socket.id, { id: socket.id, userId: rec.userId, name: player.name, roomId: room.id });
+    socket.join(room.id);
+    sendRoom(room, socket.id);
+    broadcastRoomList();
+    return true;
+  }
+  return false;
+}
+
 function loadWords() {
   if (!fs.existsSync(WORDS_PATH)) {
     console.warn('Словарь не найден: ' + WORDS_PATH + ' (проверка слов отключена)');
@@ -714,7 +776,7 @@ function handleTimeout(room) {
     name: player.name,
     reason: 'timeout',
   });
-  sendRoom(room, socket.id);
+  sendRoom(room, room.hostId);
   if (checkGameOver(room)) return;
   room.turnPlayerId = nextAliveId(room, room.turnPlayerId);
   startTurn(room);
@@ -758,7 +820,7 @@ function finishGame(room, winnerPlayer) {
   }
   room.winner = winner;
   recordGame(room.players, winner ? winner.id : null);
-  sendRoom(room, socket.id);
+  sendRoom(room, room.hostId);
   sendGame(room);
   io.to(room.id).emit('gameOver', {
     winner,
@@ -805,7 +867,7 @@ function beginGame(room) {
   });
   room.requiredLetter = START_LETTERS[Math.floor(Math.random() * START_LETTERS.length)];
   room.turnPlayerId = room.players[Math.floor(Math.random() * room.players.length)].id;
-  sendRoom(room, socket.id);
+  sendRoom(room, room.hostId);
   io.to(room.id).emit('gameStarted', {});
   startTurn(room);
   sendPushToRoom(
@@ -816,14 +878,19 @@ function beginGame(room) {
 }
 
 function leaveRoom(socket) {
-  const info = players.get(socket.id);
+  leaveRoomById(socket.id, socket);
+}
+
+function leaveRoomById(socketId, knownSocket) {
+  const info = players.get(socketId);
   if (!info) return;
   const room = rooms.get(info.roomId);
-  players.delete(socket.id);
+  players.delete(socketId);
+  const sock = knownSocket || io.sockets.sockets.get(socketId);
+  if (sock) sock.leave(info.roomId);
   if (!room) return;
 
-  socket.leave(room.id);
-  room.players = room.players.filter((p) => p.id !== socket.id);
+  room.players = room.players.filter((p) => p.id !== socketId);
 
   if (room.players.length === 0) {
     clearTimeout(room.turnTimer);
@@ -1116,6 +1183,7 @@ io.on('connection', (socket) => {
     const userId = normalize2(payload && payload.id) || (name ? nameKey(name) : '');
     if (!userId || !name) return;
     attachUser(socket, userId);
+    reattachAfterReconnect(userId);
     const myPid = await ensureUser(userId, name, payload && payload.avatarId, payload && payload.photo);
     socket.emit('pid', { pid: myPid });
     socket.emit('friendsUpdate', await buildFriendsPayload(userId));
@@ -1457,7 +1525,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     activeSockets.delete(socket.id);
     const nameId = socketName.get(socket.id);
-    leaveRoom(socket);
+    scheduleLeave(socket.id);
     detachUser(socket);
     if (nameId && !nameSockets.has(nameId)) notifyFriendsPresence(nameId);
   });
