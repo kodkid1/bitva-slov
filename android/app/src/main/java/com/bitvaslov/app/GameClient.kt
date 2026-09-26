@@ -10,11 +10,15 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
 
     private var socket: Socket? = null
 
+    val isConnected: Boolean get() = socket?.connected() == true
+
     fun connect(serverUrl: String) {
         val opts = IO.Options().apply {
             transports = arrayOf("websocket")
             reconnection = true
             reconnectionAttempts = 10
+            reconnectionDelay = 1000
+            reconnectionDelayMax = 6000
         }
         socket = IO.socket(URI.create(serverUrl), opts)
         register()
@@ -184,11 +188,12 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
 
         s.on(Socket.EVENT_CONNECT_ERROR) { args ->
             val err = args.firstOrNull()
-            onEvent("connectError", (err as? Exception)?.message ?: "Не удалось подключиться к серверу")
+            // временная неудача: показывать ошибку рано, reconnection ещё может succeed
+            onEvent("connectError", (err as? Exception)?.message ?: "Нет связи с сервером")
         }
 
         s.on("reconnect_failed") {
-            onEvent("connectError", "Не удалось переподключиться к серверу")
+            onEvent("connectFailed", "Сервер недоступен, не удалось подключиться")
         }
 
         s.on("connected") { args ->

@@ -32,6 +32,7 @@ class GameViewModel : ViewModel() {
 
     private var client: GameClient? = null
     private var roomListJob: kotlinx.coroutines.Job? = null
+    private var connectErrorJob: kotlinx.coroutines.Job? = null
     private var _isActive = true
     private var lastCreateAt = 0L
 
@@ -304,12 +305,14 @@ class GameViewModel : ViewModel() {
         viewModelScope.launch {
             when (event) {
                 "connected" -> {
+                    connectErrorJob?.cancel()
                     val wasConnect = _ui.value.screen == Screen.CONNECT
                     _ui.update { s ->
                         s.copy(
                             screen = if (wasConnect) Screen.LOBBY else s.screen,
                             toast = if (wasConnect) "Подключено" else null,
                             error = null,
+                            offline = false,
                         )
                     }
                     sendPushToken()
@@ -327,7 +330,21 @@ class GameViewModel : ViewModel() {
                 }
 
                 "connectError" -> {
-                    val msg = data as? String ?: "Не удалось подключиться к серверу"
+                    // сеть моргнула — не показываем ошибку сразу, reconnect может пройти
+                    val raw = data as? String ?: ""
+                    val msg = friendlyNetError(raw)
+                    connectErrorJob?.cancel()
+                    connectErrorJob = viewModelScope.launch {
+                        delay(6000)
+                        if (client?.isConnected != true) {
+                            _ui.update { s -> s.copy(offline = true, error = msg, toast = msg) }
+                        }
+                    }
+                }
+
+                "connectFailed" -> {
+                    connectErrorJob?.cancel()
+                    val msg = data as? String ?: "Сервер недоступен"
                     _ui.update { s ->
                         s.copy(
                             offline = true,
@@ -582,6 +599,7 @@ class GameViewModel : ViewModel() {
 
     override fun onCleared() {
         roomListJob?.cancel()
+        connectErrorJob?.cancel()
         client?.disconnect()
         client = null
         super.onCleared()
@@ -595,6 +613,20 @@ private inline fun <T> JSONArray.mapObjects(factory: (JSONObject) -> T): List<T>
         runCatching { factory(obj) }.getOrNull()?.let(out::add)
     }
     return out
+}
+
+/** Технические тексты socket.io/okhttp заменяем на понятные. */
+private fun friendlyNetError(raw: String): String {
+    val v = raw.lowercase()
+    return when {
+        v.isBlank() -> "Нет связи с сервером"
+        v.contains("timeout") -> "Сервер не отвечает"
+        v.contains("host") || v.contains("resolve") || v.contains("unknownhost") -> "Не найден сервер"
+        v.contains("refused") -> "Сервер отказал в подключении"
+        v.contains("ssl") || v.contains("certificate") || v.contains("handshake") -> "Проблема с защищённым соединением"
+        v.contains("network") || v.contains("unreachable") || v.contains("offline") -> "Нет интернета"
+        else -> "Нет связи с сервером"
+    }
 }
 
 data class UiState(
