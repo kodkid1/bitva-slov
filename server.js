@@ -481,6 +481,9 @@ function scheduleLeave(socketId) {
     const player = room.players.find((p) => p.id === socketId);
     if (player) player.away = true;
     sendRoom(room, null);
+    // список комнат должен уехать сразу, иначе комната с отвалившимся
+    // игроком висит со старым счётчиком до следующего события
+    broadcastRoomList();
   }
   const timer = setTimeout(() => {
     pendingLeaves.delete(key || socketId);
@@ -632,14 +635,21 @@ function normalize2(name) {
   return String(name == null ? '' : name).trim().replace(/\s+/g, ' ');
 }
 
+function onlinePlayers(room) {
+  // away = отвалился по сети, ждём переподключения ещё LEAVE_GRACE_MS
+  return room.players.filter((p) => !p.away);
+}
+
 function publicRoomInfo(room) {
+  const online = onlinePlayers(room);
+  const host = room.players.find((p) => p.id === room.hostId) || room.players[0];
   return {
     id: room.id,
     name: room.name,
     isPrivate: room.isPrivate,
-    hostName: room.players.length ? room.players[0].name : '',
+    hostName: host ? host.name : '',
     createdAt: room.createdAt || 0,
-    players: room.players.length,
+    players: online.length,
     maxPlayers: room.maxPlayers,
     timer: room.timer,
     state: room.state,
@@ -706,12 +716,20 @@ function sendGame(room) {
   io.to(room.id).emit('gameUpdate', gamePayload(room));
 }
 
-function broadcastRoomList() {
+function listableRooms() {
   const list = [];
   for (const room of rooms.values()) {
-    if (room.state === 'lobby') list.push(publicRoomInfo(room));
+    if (room.state !== 'lobby') continue;
+    // комната, из которой все отвалились, не должна висеть в списке:
+    // grace для переподключения живёт в pendingLeaves, а не в списке комнат
+    if (onlinePlayers(room).length === 0) continue;
+    list.push(publicRoomInfo(room));
   }
-  io.emit('roomList', list);
+  return list;
+}
+
+function broadcastRoomList() {
+  io.emit('roomList', listableRooms());
 }
 
 function nextAliveId(room, fromId) {
@@ -919,9 +937,7 @@ function leaveRoomById(socketId, knownSocket) {
 
 io.on('connection', (socket) => {
   socket.emit('connected', { id: socket.id });
-  socket.emit('roomList', [...rooms.values()]
-    .filter((r) => r.state === 'lobby')
-    .map(publicRoomInfo));
+  socket.emit('roomList', listableRooms());
 
   socket.on('createRoom', (payload, callback) => {
     const data = payload || {};

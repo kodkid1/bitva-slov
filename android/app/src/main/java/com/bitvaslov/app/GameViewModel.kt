@@ -36,6 +36,11 @@ class GameViewModel : ViewModel() {
     private var _isActive = true
     private var lastCreateAt = 0L
 
+    // пароль приватной комнаты, которую создали мы: сервер отдаёт его хосту
+    // обратно, держим под конкретный roomId, чтобы "Ещё раз" пересоздала такую же
+    private var ownedRoomId: String? = null
+    private var ownedRoomPassword: String? = null
+
     init {
         _ui.update {
             it.copy(
@@ -147,9 +152,9 @@ class GameViewModel : ViewModel() {
         acceleration: Boolean = false,
         theme: String = "",
         password: String? = null
-    ) {
+    ): Boolean {
         val now = System.currentTimeMillis()
-        if (now - lastCreateAt < 2000) return
+        if (now - lastCreateAt < 2000) return false
         lastCreateAt = now
         client?.createRoom(
             _ui.value.myName,
@@ -166,6 +171,7 @@ class GameViewModel : ViewModel() {
             theme,
             password
         )
+        return true
     }
 
     fun setRoomSettings(
@@ -203,7 +209,48 @@ class GameViewModel : ViewModel() {
     }
 
     fun startGame() = client?.startGame()
-    fun playAgain() = client?.startGame()
+
+    /**
+     * "Ещё раз" не запускает партию сразу — создаёт новое лобби с теми же
+     * настройками и ждёт, пока хост нажмёт «Начать». Иначе второй игрок
+     * оказывается в игре, на которую не соглашался.
+     */
+    fun playAgain() {
+        val prev = _ui.value.room
+        if (prev == null) {
+            leaveRoom()
+            return
+        }
+        val password = if (ownedRoomId == prev.id) ownedRoomPassword else null
+        if (prev.isPrivate && password.isNullOrBlank()) {
+            // пароль есть только у хоста, пересоздать приватную комнату без
+            // него нельзя — отправляем на форму, пусть введёт заново
+            leaveRoom()
+            _ui.update {
+                it.copy(screen = Screen.CREATEROOM, toast = "Придумай пароль для новой комнаты")
+            }
+            return
+        }
+        val created = createRoom(
+            roomName = prev.name,
+            isPrivate = prev.isPrivate,
+            timer = prev.timer,
+            maxPlayers = prev.maxPlayers,
+            mode = prev.mode,
+            minWordLen = prev.minWordLen,
+            randomTimer = prev.randomTimer,
+            acceleration = prev.acceleration,
+            theme = prev.theme,
+            password = password,
+        )
+        if (created) {
+            _ui.update { it.copy(game = null, winner = null) }
+        } else {
+            // антиспам не дал создать комнату — экран результата остаётся как был
+            _ui.update { it.copy(toast = "Подожди пару секунд и попробуй ещё раз") }
+        }
+    }
+
     fun submitWord(word: String) = client?.submitWord(word)
     fun leaveRoom() {
         _ui.update { it.copy(screen = Screen.LOBBY, room = null, game = null, winner = null) }
@@ -394,6 +441,15 @@ class GameViewModel : ViewModel() {
                 "roomUpdate" -> {
                     val o = data as? JSONObject ?: return@launch
                     val room = runCatching { RoomState.fromJson(o) }.getOrNull() ?: return@launch
+                    // хост приватной комнаты получает пароль обратно — запоминаем его,
+                    // привязав к id комнаты, чтобы случайно не утечь в чужую
+                    if (room.isPrivate && room.hostId == MyIds.current) {
+                        ownedRoomId = room.id
+                        ownedRoomPassword = room.password
+                    } else if (ownedRoomId == room.id) {
+                        ownedRoomId = null
+                        ownedRoomPassword = null
+                    }
                     _ui.update { s ->
                         s.copy(
                             room = room,

@@ -694,40 +694,29 @@ Text(
                                     Spacer(Modifier.height(2.dp))
                                     Text("Игр: ${r.games} • Побед: ${r.wins}", fontSize = 14.sp, color = offlineGray)
                                 }
-                                // Одна плашка с градиентом от красного (отклонить) к зелёному (принять)
-                                Row(
-                                    modifier = Modifier
-                                        .height(50.dp)
-                                        .clip(RoundedCornerShape(26.dp))
-                                        .background(
-                                    Brush.horizontalGradient(
-                                        colorStops = arrayOf(
-                                            0f to redDark,
-                                            0.45f to redDark,
-                                            1f to green,
-                                        )
-                                    )
-                                ),
-                                    verticalAlignment = Alignment.CenterVertically,
+                                // стеклянные кнопки: крестик и плюс раздельно
+                                GlassIconButton(
+                                    onClick = { vm.respondFriend(r.id, false) },
+                                    tint = redDark,
+                                    alpha = 0.50f,
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(52.dp)
-                                            .fillMaxHeight()
-                                            .clickable { vm.respondFriend(r.id, false) },
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Image(painterResource(R.drawable.ic_close), contentDescription = "Отклонить", modifier = Modifier.size(22.dp))
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .width(52.dp)
-                                            .fillMaxHeight()
-                                            .clickable { vm.respondFriend(r.id, true) },
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Image(painterResource(R.drawable.ic_check), contentDescription = "Принять", modifier = Modifier.size(22.dp))
-                                    }
+                                    Image(
+                                        painterResource(R.drawable.ic_close),
+                                        contentDescription = "Отклонить",
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                GlassIconButton(
+                                    onClick = { vm.respondFriend(r.id, true) },
+                                    tint = green,
+                                    alpha = 0.42f,
+                                ) {
+                                    Image(
+                                        painterResource(R.drawable.ic_add),
+                                        contentDescription = "Принять",
+                                        modifier = Modifier.size(20.dp),
+                                    )
                                 }
                             }
                         }
@@ -747,17 +736,20 @@ Text(
                                     Spacer(Modifier.height(2.dp))
                                     Text("Игр: ${r.games} • Побед: ${r.wins}", fontSize = 14.sp, color = offlineGray)
                                 }
-                                // Только крестик — отменить заявку, тёмно-красный (ширина как градиентная плашка)
-                                Box(
-                                    modifier = Modifier
-                                        .width(104.dp)
-                                        .height(50.dp)
-                                        .clip(RoundedCornerShape(26.dp))
-                                        .background(redDark)
-                                        .clickable { vm.cancelFriendRequest(r.id) },
-                                    contentAlignment = Alignment.Center,
+                                // только крестик, растянутый в овал
+                                GlassIconButton(
+                                    onClick = { vm.cancelFriendRequest(r.id) },
+                                    width = 86.dp,
+                                    height = 46.dp,
+                                    shape = RoundedCornerShape(percent = 50),
+                                    tint = redDark,
+                                    alpha = 0.50f,
                                 ) {
-                                    Image(painterResource(R.drawable.ic_close), contentDescription = "Отменить", modifier = Modifier.size(22.dp))
+                                    Image(
+                                        painterResource(R.drawable.ic_close),
+                                        contentDescription = "Отменить",
+                                        modifier = Modifier.size(20.dp),
+                                    )
                                 }
                             }
                         }
@@ -1966,7 +1958,7 @@ private fun ResultScreen(state: UiState, vm: GameViewModel) {
 
             Text(
                 text = if (iWon) "ТЫ ПОБЕДИЛ" else "ПОБЕДА",
-                fontSize = 32.sp,
+                fontSize = 38.sp,
                 fontWeight = FontWeight.Black,
                 color = Color.White,
                 textAlign = TextAlign.Center,
@@ -2003,7 +1995,11 @@ private fun ResultScreen(state: UiState, vm: GameViewModel) {
             }
 
             Spacer(Modifier.height(28.dp))
-            VictoryActions(onAgain = vm::playAgain, onLeave = vm::leaveRoom)
+            GlassActionButton(
+                text = "В ЛОББИ",
+                onClick = vm::leaveRoom,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -2071,38 +2067,17 @@ private fun VictoryStat(label: String, value: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun VictoryActions(onAgain: () -> Unit, onLeave: () -> Unit) {
-    Column(
-        Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        GlassActionButton(
-            text = "ЕЩЁ РАЗ",
-            onClick = onAgain,
-            modifier = Modifier.fillMaxWidth(),
-            strong = true,
-        )
-        GlassActionButton(
-            text = "В ЛОББИ",
-            onClick = onLeave,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Composable
 private fun GlassActionButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    strong: Boolean = false,
 ) {
     Box(
         modifier = modifier
             .height(62.dp)
             .glassSurface(
                 shape = RoundedCornerShape(22.dp),
-                alpha = if (strong) 0.70f else 0.45f,
+                alpha = 0.62f,
             )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,

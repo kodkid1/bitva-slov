@@ -230,10 +230,6 @@ fun PlayerAvatar(
                     active -> base
                     else -> AppColors.SurfaceElevated.copy(alpha = 0.6f)
                 }
-            )
-            .then(
-                if (online) Modifier.border(3.dp, Color(0xFF2ECC71), CircleShape)
-                else Modifier
             ),
         contentAlignment = Alignment.Center,
     ) {
@@ -444,12 +440,12 @@ fun MainBottomBar(
                 ) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(percent = 50))
                             .background(
                                 if (isActive) Color(0xFF2C2C2E)
                                 else Color.Transparent
                             )
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                            .padding(horizontal = 18.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Box(
@@ -697,6 +693,29 @@ fun GlassCircleButton(
         modifier = modifier
             .size(size)
             .glassSurface(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+/** Стеклянная кнопка-иконка со своим оттенком; width > height даёт овал. */
+@Composable
+fun GlassIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    width: Dp = 46.dp,
+    height: Dp = 46.dp,
+    shape: Shape = CircleShape,
+    tint: Color = GlassTint,
+    alpha: Float = 0.55f,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .width(width)
+            .height(height)
+            .glassSurface(shape, tint = tint, alpha = alpha)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { content() }
