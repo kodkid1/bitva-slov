@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
@@ -122,6 +123,7 @@ fun App(vm: GameViewModel = viewModel()) {
                     Screen.ROOM -> RoomScreen(state, vm)
                     Screen.GAME -> GameScreen(state, vm)
                     Screen.RESULT -> ResultScreen(state, vm)
+                    Screen.SHOP -> ShopScreen(state, vm)
                 }
                 // раньше UiState.error писался, но нигде не отображался — все ошибки были немыми
                 state.error?.let { msg ->
@@ -145,7 +147,10 @@ fun App(vm: GameViewModel = viewModel()) {
         )
     }
 
-    state.profile?.let { p -> ProfileSheet(p, vm, backdrop = backdrop, tab = bottomTab, onSelectTab = { bottomTab = it }) }
+    // Профиль — оверлей поверх экранов; в магазине он скрывается, иначе перекрыл бы его
+    if (state.screen != Screen.SHOP) {
+        state.profile?.let { p -> ProfileSheet(state, p, vm, backdrop = backdrop, tab = bottomTab, onSelectTab = { bottomTab = it }) }
+    }
 }
 
 @Composable
@@ -159,13 +164,25 @@ private fun LobbyScreen(state: UiState, vm: GameViewModel, tab: Int, backdrop: L
                 else -> MenuTab(state, vm, onSelectTab)
             }
         }
-        MainBottomBar(
-            selected = tab,
-            onSelect = { onSelectTab(it); if (it == 2) vm.requestFriends() },
-            backdrop = backdrop,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        Column(modifier = Modifier.align(Alignment.BottomCenter)) {
+            YandexBanner(modifier = Modifier.fillMaxWidth())
+            MainBottomBar(
+                selected = tab,
+                onSelect = { onSelectTab(it); if (it == 2) vm.requestFriends() },
+                backdrop = backdrop,
+            )
+        }
     }
+}
+
+/** Тестовый баннер Яндекса: адаптивная высота под конкретный блок. */
+@Composable
+private fun YandexBanner(modifier: Modifier = Modifier, adUnitId: String = AdsManager.BANNER_UNIT) {
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx -> AdsManager.createBannerView(ctx, adUnitId) },
+        onRelease = { view -> view.destroy() },
+    )
 }
 
 private val TopBarShape = RoundedCornerShape(30.dp)
@@ -556,6 +573,8 @@ private fun FriendsTab(state: UiState, vm: GameViewModel) {
                     PlayerAvatar(user.name, 48.dp, avatarId = user.avatarId, photo = user.photo, online = user.online)
                     Column(Modifier.weight(1f).padding(start = 14.dp)) {
                         Text(user.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        PlayerTitle(user.titleId)
+                        Spacer(Modifier.height(2.dp))
 Text(
                         if (user.online) "В сети" else "Не в сети",
                         fontSize = 15.sp,
@@ -612,6 +631,7 @@ Text(
                             PlayerAvatar(f.name, 48.dp, avatarId = f.avatarId, photo = f.photo, online = f.online)
                             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                                 Text(f.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                                PlayerTitle(f.titleId)
                                 Spacer(Modifier.height(3.dp))
                                 Text(
                                     if (f.online) "В сети" else "Офлайн",
@@ -691,6 +711,7 @@ Text(
                                 PlayerAvatar(r.name, 48.dp, avatarId = r.avatarId, photo = r.photo)
                                 Column(Modifier.weight(1f).padding(start = 14.dp)) {
                                     Text(r.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                                    PlayerTitle(r.titleId)
                                     Spacer(Modifier.height(2.dp))
                                     Text("Игр: ${r.games} • Побед: ${r.wins}", fontSize = 14.sp, color = offlineGray)
                                 }
@@ -733,6 +754,7 @@ Text(
                                 PlayerAvatar(r.name, 48.dp, avatarId = r.avatarId, photo = r.photo)
                                 Column(Modifier.weight(1f).padding(start = 14.dp)) {
                                     Text(r.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                                    PlayerTitle(r.titleId)
                                     Spacer(Modifier.height(2.dp))
                                     Text("Игр: ${r.games} • Побед: ${r.wins}", fontSize = 14.sp, color = offlineGray)
                                 }
@@ -761,7 +783,7 @@ Text(
 }
 
 @Composable
-private fun ProfileSheet(p: UserProfile, vm: GameViewModel, backdrop: LayerBackdrop, tab: Int, onSelectTab: (Int) -> Unit) {
+private fun ProfileSheet(state: UiState, p: UserProfile, vm: GameViewModel, backdrop: LayerBackdrop, tab: Int, onSelectTab: (Int) -> Unit) {
     val context = LocalContext.current
     val plaque = Color(0xFF161618)
     val plaqueBtn = Color(0xFF1C1C1E)
@@ -811,6 +833,10 @@ private fun ProfileSheet(p: UserProfile, vm: GameViewModel, backdrop: LayerBackd
             Spacer(Modifier.height(14.dp))
             // Имя — большими белыми
             Text(p.name, color = white, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            if (p.titleId != 0) {
+                Spacer(Modifier.height(4.dp))
+                PlayerTitle(p.titleId, color = AppColors.Primary, fontSize = 16.sp)
+            }
             Spacer(Modifier.height(4.dp))
             // id: сразу после ника
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -934,6 +960,12 @@ private fun ProfileSheet(p: UserProfile, vm: GameViewModel, backdrop: LayerBackd
                 ) {
                     Text("Удалить из друзей", color = white, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 }
+                Spacer(Modifier.height(12.dp))
+            }
+            // Кошелёк и магазин титулов — только в своём профиле
+            if (p.isMe) {
+                WalletCard(state, vm)
+                Spacer(Modifier.height(12.dp))
             }
             // Тестовая реклама — только в своём профиле
             if (p.isMe) {
@@ -1069,6 +1101,139 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
                         })
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WalletCard(state: UiState, vm: GameViewModel) {
+    val wallet = state.wallet
+    val next = TitleCatalog.nextAffordable(wallet.coins)
+    NeonCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Монетки", style = MaterialTheme.typography.titleMedium)
+                    Text("🪙 ${wallet.coins}", color = AppColors.Primary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        if (wallet.titleName.isBlank()) "Без титула" else "«${wallet.titleName}»",
+                        color = AppColors.TextSecondary,
+                        fontSize = 12.sp,
+                    )
+                    if (wallet.streak > 0) {
+                        Text("🔥 серия ${wallet.streak} дн.", color = AppColors.TextSecondary, fontSize = 12.sp)
+                    }
+                }
+            }
+            if (next != null) {
+                Text(
+                    "До «${next.name}» — ${next.price - wallet.coins} монет",
+                    color = AppColors.TextSecondary,
+                    fontSize = 13.sp,
+                )
+            }
+            NeonButton("МАГАЗИН ТИТУЛОВ", { vm.requestShop() }, Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun ShopScreen(state: UiState, vm: GameViewModel) {
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
+    val wallet = state.wallet
+    val busy = state.shopBusy
+    val canWatch = activity != null && wallet.videosLeft > 0 && !busy
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("МАГАЗИН", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
+            Text("🪙 ${wallet.coins}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AppColors.Primary)
+            Spacer(Modifier.width(8.dp))
+            NeonButton("НАЗАД", { vm.dismissShop() }, height = 40.dp)
+        }
+
+        NeonCard(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            Column(Modifier.padding(16.dp), Arrangement.spacedBy(10.dp)) {
+                Text("Заработать монетки", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Ролик — 10 монет. Сегодня осталось: ${wallet.videosLeft}",
+                    color = AppColors.TextSecondary,
+                    fontSize = 13.sp,
+                )
+                NeonButton(
+                    text = if (wallet.videosLeft > 0) "СМОТРЕТЬ РОЛИК · +10" else "ЛИМИТ НА СЕГОДНЯ",
+                    onClick = { if (canWatch) vm.watchVideoForCoins(activity) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = canWatch,
+                )
+            }
+        }
+
+        Text(
+            "ТИТУЛЫ",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = AppColors.TextSecondary,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
+        )
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(TitleCatalog.all.chunked(2)) { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pair.forEach { def ->
+                        TitleCard(
+                            def = def,
+                            wallet = wallet,
+                            busy = busy,
+                            modifier = Modifier.weight(1f),
+                            onBuy = { if (canWatch) vm.watchVideoForCoins(activity, def.id) else vm.buyTitle(def.id) },
+                            onEquip = { vm.equipTitle(def.id) },
+                        )
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TitleCard(
+    def: TitleDef,
+    wallet: Wallet,
+    busy: Boolean,
+    modifier: Modifier = Modifier,
+    onBuy: () -> Unit,
+    onEquip: () -> Unit,
+) {
+    val owned = wallet.owns(def.id)
+    val equipped = wallet.titleId == def.id
+    val canBuy = wallet.coins >= def.price
+    NeonCard(modifier) {
+        Column(Modifier.padding(14.dp), Arrangement.spacedBy(8.dp)) {
+            Text(
+                "«${def.name}»",
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = Color.White,
+                maxLines = 2,
+            )
+            when {
+                equipped -> Text("НАДЕТ", color = AppColors.Primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                owned -> NeonButton("НАДЕТЬ", onEquip, Modifier.fillMaxWidth(), enabled = !busy, height = 44.dp)
+                canBuy -> NeonButton("КУПИТЬ · ${def.price}", onBuy, Modifier.fillMaxWidth(), enabled = !busy, height = 44.dp)
+                else -> Text("${def.price} монет", color = AppColors.TextSecondary, fontSize = 12.sp)
             }
         }
     }
@@ -1665,6 +1830,7 @@ private fun RoomScreen(state: UiState, vm: GameViewModel) {
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            PlayerTitle(p.titleId)
                             Text(
                                 if (p.id == room.hostId) "Создатель" else "Игрок",
                                 fontSize = 14.sp,
@@ -2026,6 +2192,7 @@ private fun WinnerPlate(winner: WinnerInfo, isMe: Boolean) {
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(3.dp))
+            PlayerTitle(winner.titleId, color = AppColors.Primary, fontSize = 13.sp)
             Text(
                 if (isMe) "Это ты" else "Победитель",
                 fontSize = 13.sp,

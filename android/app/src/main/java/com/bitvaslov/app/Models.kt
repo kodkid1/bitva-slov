@@ -12,12 +12,14 @@ enum class Screen {
     ROOM,
     GAME,
     RESULT,
+    SHOP,
 }
 
 data class Friend(
     val id: String,
     val name: String,
     val avatarId: Int = 0,
+    val titleId: Int = 0,
     val photo: String = "",
     val online: Boolean = false,
     val inGame: Boolean = false,
@@ -27,6 +29,7 @@ data class Friend(
             id = o.optString("id", ""),
             name = o.optString("name", ""),
             avatarId = o.optInt("avatarId", 0),
+            titleId = o.optInt("titleId", 0),
             photo = o.optString("photo", ""),
             online = o.optBoolean("online", false),
             inGame = o.optBoolean("inGame", false),
@@ -38,6 +41,7 @@ data class FriendRef(
     val id: String,
     val name: String,
     val avatarId: Int = 0,
+    val titleId: Int = 0,
     val photo: String = "",
     val games: Int = 0,
     val wins: Int = 0,
@@ -47,6 +51,7 @@ data class FriendRef(
             id = o.optString("id", ""),
             name = o.optString("name", ""),
             avatarId = o.optInt("avatarId", 0),
+            titleId = o.optInt("titleId", 0),
             photo = o.optString("photo", ""),
             games = o.optInt("games", 0),
             wins = o.optInt("wins", 0),
@@ -58,6 +63,7 @@ data class UserSummary(
     val id: String,
     val name: String,
     val avatarId: Int = 0,
+    val titleId: Int = 0,
     val photo: String = "",
     val online: Boolean = false,
     val inGame: Boolean = false,
@@ -69,6 +75,7 @@ data class UserSummary(
             id = o.optString("id", ""),
             name = o.optString("name", ""),
             avatarId = o.optInt("avatarId", 0),
+            titleId = o.optInt("titleId", 0),
             photo = o.optString("photo", ""),
             online = o.optBoolean("online", false),
             inGame = o.optBoolean("inGame", false),
@@ -83,6 +90,7 @@ data class UserProfile(
     val name: String,
     val pid: Int = 0,
     val avatarId: Int = 0,
+    val titleId: Int = 0,
     val photo: String = "",
     val online: Boolean = false,
     val inGame: Boolean = false,
@@ -105,6 +113,7 @@ data class UserProfile(
             name = o.optString("name", ""),
             pid = o.optInt("pid", 0),
             avatarId = o.optInt("avatarId", 0),
+            titleId = o.optInt("titleId", 0),
             photo = o.optString("photo", ""),
             online = o.optBoolean("online", false),
             inGame = o.optBoolean("inGame", false),
@@ -150,6 +159,7 @@ data class Player(
     val name: String,
     val alive: Boolean = true,
     val avatarId: Int = 0,
+    val titleId: Int = 0,
     val photo: String = "",
     val score: Int = 0,
     val team: Int = 0,
@@ -160,6 +170,7 @@ data class Player(
             name = o.optString("name", ""),
             alive = o.optBoolean("alive", true),
             avatarId = o.optInt("avatarId", 0),
+            titleId = o.optInt("titleId", 0),
             photo = o.optString("photo", ""),
             score = o.optInt("score", 0),
             team = o.optInt("team", 0),
@@ -310,8 +321,73 @@ data class WinnerInfo(
     val id: String,
     val name: String,
     val avatarId: Int = 0,
+    val titleId: Int = 0,
     val photo: String = "",
 )
+
+data class TitleDef(val id: Int, val name: String, val price: Int)
+
+/** Каталог титулов. Держим в том же порядке и с теми же ценами, что и TITLES в server.js. */
+object TitleCatalog {
+    val all = listOf(
+        TitleDef(0, "Новичок", 0),
+        TitleDef(1, "Участник", 60),
+        TitleDef(2, "Знаток слов", 100),
+        TitleDef(3, "Скоростной", 120),
+        TitleDef(4, "Своя комната", 140),
+        TitleDef(5, "Досрочный вход", 160),
+        TitleDef(6, "Дуэлянт", 180),
+        TitleDef(7, "Сыровар", 200),
+        TitleDef(8, "100 побед", 250),
+        TitleDef(9, "Ночной игрок", 300),
+        TitleDef(10, "Мастер слова", 350),
+        TitleDef(11, "Легенда", 400),
+    )
+
+    private val byId = all.associateBy { it.id }
+
+    fun isKnown(id: Int): Boolean = byId.containsKey(id)
+    fun name(id: Int): String = byId[id]?.name ?: ""
+    fun price(id: Int): Int = byId[id]?.price ?: 0
+
+    /** Цена следующего титула, который ещё можно купить, — для подсказки в профиле. */
+    fun nextAffordable(coins: Int): TitleDef? =
+        all.firstOrNull { it.price > 0 && it.price > coins }
+}
+
+data class Wallet(
+    val coins: Int = 0,
+    val titleId: Int = 0,
+    val ownedTitles: Set<Int> = setOf(0),
+    val streak: Int = 0,
+    val videosLeft: Int = 0,
+) {
+    companion object {
+        fun fromJson(o: JSONObject): Wallet {
+            val owned = LinkedHashSet<Int>()
+            owned.add(0)
+            val arr = o.optJSONArray("ownedTitles")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val v = arr.optInt(i, -1)
+                    if (TitleCatalog.isKnown(v)) owned.add(v)
+                }
+            }
+            val titleId = o.optInt("titleId", 0).let { if (TitleCatalog.isKnown(it)) it else 0 }
+            return Wallet(
+                coins = o.optInt("coins", 0),
+                titleId = titleId,
+                ownedTitles = owned,
+                streak = o.optInt("streak", 0),
+                videosLeft = o.optInt("videosLeft", 0),
+            )
+        }
+    }
+
+    val titleName: String get() = TitleCatalog.name(titleId)
+
+    fun owns(id: Int): Boolean = ownedTitles.contains(id)
+}
 
 data class PlayerStats(
     val games: Int,

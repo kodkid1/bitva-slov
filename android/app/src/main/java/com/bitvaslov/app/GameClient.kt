@@ -45,6 +45,7 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         randomTimer: Boolean = false,
         acceleration: Boolean = false,
         theme: String = "",
+        titleId: Int = 0,
         password: String? = null
     ) {
         val o = JSONObject()
@@ -54,6 +55,7 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         o.put("timer", timer)
         o.put("maxPlayers", maxPlayers)
         o.put("avatarId", avatarId)
+        o.put("titleId", titleId)
         o.put("mode", mode)
         o.put("minWordLen", minWordLen)
         o.put("randomTimer", randomTimer)
@@ -80,10 +82,11 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         socket?.emit("setRoomSettings", o)
     }
 
-    fun joinRoom(playerName: String, roomId: String? = null, password: String? = null, avatarId: Int = 0, photo: String = "") {
+    fun joinRoom(playerName: String, roomId: String? = null, password: String? = null, avatarId: Int = 0, photo: String = "", titleId: Int = 0) {
         val o = JSONObject()
         o.put("playerName", playerName)
         o.put("avatarId", avatarId)
+        o.put("titleId", titleId)
         if (photo.isNotBlank()) o.put("photo", photo)
         if (roomId != null) o.put("roomId", roomId)
         if (password != null) o.put("password", password)
@@ -173,6 +176,22 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         socket?.emit("inviteFriend", JSONObject().put("id", id), callback("_ack_invite"))
     }
 
+    fun requestWallet() {
+        socket?.emit("walletRequest")
+    }
+
+    fun claimReward() {
+        socket?.emit("rewardClaim", JSONObject(), callback("_ack_reward"))
+    }
+
+    fun buyTitle(titleId: Int) {
+        socket?.emit("shopBuy", JSONObject().put("titleId", titleId), callback("_ack_buy"))
+    }
+
+    fun equipTitle(titleId: Int) {
+        socket?.emit("shopEquip", JSONObject().put("titleId", titleId), callback("_ack_equip"))
+    }
+
     private fun callback(tag: String): io.socket.client.Ack {
         return io.socket.client.Ack { args ->
             onEvent(tag, args.firstOrNull())
@@ -260,6 +279,14 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
 
         s.on("pid") { args ->
             onEvent("pid", args.firstOrNull() as? JSONObject)
+        }
+
+        s.on("walletState") { args ->
+            onEvent("walletState", args.firstOrNull() as? JSONObject)
+        }
+
+        s.on("streakBonus") { args ->
+            onEvent("streakBonus", args.firstOrNull() as? JSONObject)
         }
 
         s.on("roomReplaced") {

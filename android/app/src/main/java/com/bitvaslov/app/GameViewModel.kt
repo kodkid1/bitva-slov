@@ -48,6 +48,11 @@ class GameViewModel : ViewModel() {
                 myName = ProfileStore.name,
                 myAvatarId = ProfileStore.avatarId,
                 myPhoto = ProfileStore.photo,
+                wallet = Wallet(
+                    coins = ProfileStore.coins,
+                    titleId = ProfileStore.titleId,
+                    ownedTitles = ProfileStore.ownedTitles,
+                ),
             )
         }
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
@@ -123,8 +128,58 @@ class GameViewModel : ViewModel() {
 
     fun clearPhoto() = setPhoto("")
 
+    // ─── Монетки, ролики, магазин ─────────────────────────────────────────
+    fun requestWallet() {
+        client?.requestWallet()
+    }
+
+    fun buyTitle(titleId: Int) {
+        if (_ui.value.shopBusy) return
+        _ui.update { it.copy(shopBusy = true) }
+        client?.buyTitle(titleId)
+    }
+
+    fun equipTitle(titleId: Int) {
+        if (_ui.value.shopBusy) return
+        _ui.update { it.copy(shopBusy = true, pendingBuyTitleId = null) }
+        client?.equipTitle(titleId)
+    }
+
+    /**
+     * Ролик как способ заработка. thenBuyTitleId — титул, который не хватило купить:
+     * после награды покупка проходит сама, без второго тапа.
+     */
+    fun watchVideoForCoins(activity: android.app.Activity, thenBuyTitleId: Int? = null) {
+        if (_ui.value.shopBusy) return
+        val wallet = _ui.value.wallet
+        if (client?.isConnected != true) {
+            _ui.update { it.copy(toast = "Нет связи с сервером") }
+            return
+        }
+        if (wallet.videosLeft <= 0) {
+            _ui.update { it.copy(toast = "Ролики на сегодня уже все — приходи завтра") }
+            return
+        }
+        _ui.update { it.copy(shopBusy = true, pendingBuyTitleId = thenBuyTitleId) }
+        AdsManager.showRewarded(
+            activity = activity,
+            onReward = { client?.claimReward() },
+            onUnavailable = {
+                _ui.update {
+                    it.copy(shopBusy = false, pendingBuyTitleId = null, toast = "Ролик не загрузился, попробуй чуть позже")
+                }
+            },
+        )
+    }
+
     fun requestCreateRoom() = _ui.update { it.copy(screen = Screen.CREATEROOM) }
     fun dismissCreateRoom() = _ui.update { it.copy(screen = Screen.LOBBY) }
+
+    fun requestShop() {
+        client?.requestWallet()
+        _ui.update { it.copy(screen = Screen.SHOP, error = null, toast = null) }
+    }
+    fun dismissShop() = _ui.update { it.copy(screen = Screen.LOBBY) }
 
     fun requestPassword(roomId: String, roomName: String) = _ui.update {
         it.copy(screen = Screen.PASSWORD, pendingRoomId = roomId, pendingRoomName = roomName, passwordFails = 0)
@@ -169,6 +224,7 @@ class GameViewModel : ViewModel() {
             randomTimer,
             acceleration,
             theme,
+            _ui.value.wallet.titleId,
             password
         )
         return true
@@ -190,7 +246,13 @@ class GameViewModel : ViewModel() {
             requestPassword(room.id, room.name)
             return
         }
-        client?.joinRoom(_ui.value.myName, roomId = roomId, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
+        client?.joinRoom(
+            _ui.value.myName,
+            roomId = roomId,
+            avatarId = _ui.value.myAvatarId,
+            photo = _ui.value.myPhoto,
+            titleId = _ui.value.wallet.titleId,
+        )
     }
 
     fun joinRoomByPassword(password: String) {
@@ -205,6 +267,7 @@ class GameViewModel : ViewModel() {
             password = value,
             avatarId = _ui.value.myAvatarId,
             photo = _ui.value.myPhoto,
+            titleId = _ui.value.wallet.titleId,
         )
     }
 
@@ -492,13 +555,77 @@ class GameViewModel : ViewModel() {
                             it.optString("id", ""),
                             it.optString("name", ""),
                             it.optInt("avatarId", 0),
+                            it.optInt("titleId", 0),
                             it.optString("photo", ""),
                         )
                     }
+                    // сервер кладёт в rewards сколько монет досталось каждому,
+                    // само начисление придёт следом в walletState
+                    val gained = o?.optJSONObject("rewards")?.optInt(MyIds.current ?: "", 0) ?: 0
                     _ui.update {
-                        it.copy(winner = w, screen = Screen.RESULT)
+                        it.copy(
+                            winner = w,
+                            screen = Screen.RESULT,
+                            toast = if (gained > 0) "🪙 +$gained монет за матч" else it.toast,
+                        )
                     }
                     PlayFeedback.result()
+                }
+
+                "walletState" -> {
+                    val w = (data as? JSONObject)?.let { runCatching { Wallet.fromJson(it) }.getOrNull() }
+                        ?: return@launch
+                    ProfileStore.saveWallet(w.coins, w.titleId, w.ownedTitles)
+                    _ui.update { it.copy(wallet = w, shopBusy = false) }
+                }
+
+                "streakBonus" -> {
+                    val o = data as? JSONObject
+                    val streak = o?.optInt("streak", 0) ?: 0
+                    val bonus = o?.optInt("bonus", 0) ?: 0
+                    if (bonus > 0) {
+                        _ui.update { it.copy(toast = "🔥 Серия $streak дн. — +$bonus монет") }
+                    }
+                }
+
+                "_ack_reward" -> {
+                    val o = data as? JSONObject
+                    if (o?.optBoolean("ok", false) == true) {
+                        val gained = o.optInt("gained", 0)
+                        val pending = _ui.value.pendingBuyTitleId
+                        if (pending != null) {
+                            // ролик посмотрен «в расчёте» покупку — пробуем купить сразу
+                            _ui.update { it.copy(pendingBuyTitleId = null) }
+                            client?.buyTitle(pending)
+                        } else if (gained > 0) {
+                            _ui.update { it.copy(shopBusy = false, toast = "🪙 +$gained монет") }
+                        }
+                    } else {
+                        val msg = o?.optString("error", "Не удалось получить монеты") ?: "Не удалось получить монеты"
+                        _ui.update { it.copy(shopBusy = false, pendingBuyTitleId = null, toast = msg) }
+                    }
+                }
+
+                "_ack_buy" -> {
+                    val o = data as? JSONObject
+                    if (o?.optBoolean("ok", false) == true) {
+                        val titleId = o.optInt("titleId", 0)
+                        val title = TitleCatalog.name(titleId)
+                        _ui.update {
+                            it.copy(shopBusy = false, pendingBuyTitleId = null, toast = "Титул «$title» надет")
+                        }
+                    } else {
+                        val msg = o?.optString("error", "Покупка не прошла") ?: "Покупка не прошла"
+                        _ui.update { it.copy(shopBusy = false, pendingBuyTitleId = null, toast = msg) }
+                    }
+                }
+
+                "_ack_equip" -> {
+                    val o = data as? JSONObject
+                    if (o?.optBoolean("ok", false) != true) {
+                        val msg = o?.optString("error", "Не получилось") ?: "Не получилось"
+                        _ui.update { it.copy(shopBusy = false, toast = msg) }
+                    }
                 }
 
                 "wordAccepted" -> {
@@ -716,4 +843,7 @@ data class UiState(
     val vibrationIntensity: Float = 0.5f,
     val notificationsOn: Boolean = true,
     val gameAccent: Int = SettingsStore.DEFAULT_ACCENT,
+    val wallet: Wallet = Wallet(),
+    val shopBusy: Boolean = false,
+    val pendingBuyTitleId: Int? = null,
 )

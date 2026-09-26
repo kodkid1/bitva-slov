@@ -1,6 +1,7 @@
 ﻿package com.bitvaslov.app.ui
 
 import com.bitvaslov.app.R
+import com.bitvaslov.app.TitleCatalog
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -206,6 +207,29 @@ fun avatarAccent(photo: String, avatarId: Int): Color {
     } catch (e: Exception) {
         avatarColor(avatarId)
     }
+}
+
+/**
+ * Титул под ником. При titleId = 0 (или неизвестном) не рисует ничего,
+ * чтобы списки игроков не превращались в кашу из пустых строк.
+ */
+@Composable
+fun PlayerTitle(
+    titleId: Int,
+    modifier: Modifier = Modifier,
+    color: Color = AppColors.TextSecondary,
+    fontSize: androidx.compose.ui.unit.TextUnit = 11.sp,
+) {
+    val name = TitleCatalog.name(titleId)
+    if (name.isBlank()) return
+    Text(
+        "«$name»",
+        color = color,
+        fontSize = fontSize,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier,
+    )
 }
 
 @Composable

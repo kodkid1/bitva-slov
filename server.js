@@ -266,6 +266,7 @@ async function userInfoFor(ids) {
         map[s.id] = {
           name: d.name || s.id,
           avatarId: d.avatarId || 0,
+          titleId: d.titleId || 0,
           photo: d.photo || '',
           pid: Number.isFinite(d.pid) ? d.pid : 0,
         };
@@ -289,6 +290,7 @@ async function buildFriendsPayload(id) {
       pid: infoEntry.pid || 0,
       name: infoEntry.name || fid,
       avatarId: infoEntry.avatarId || 0,
+      titleId: infoEntry.titleId || 0,
       photo: infoEntry.photo || '',
       games: st.games,
       wins: st.wins,
@@ -334,6 +336,176 @@ async function notifyFriendsPresence(id) {
       }),
     );
   });
+}
+
+// ─── Монетки, титулы, серия дней ────────────────────────────────────────────
+const COIN_STARTER = 50;
+const COIN_PER_VIDEO = 10;
+const VIDEO_DAILY_CAP = 20;
+const VIDEO_MIN_INTERVAL_MS = 15000;
+const COIN_MATCH = 2;
+const COIN_WIN = 3;
+
+// id 0 — «Новичок», он бесплатный и есть у всех
+const TITLES = [
+  { id: 0, name: 'Новичок', price: 0 },
+  { id: 1, name: 'Участник', price: 60 },
+  { id: 2, name: 'Знаток слов', price: 100 },
+  { id: 3, name: 'Скоростной', price: 120 },
+  { id: 4, name: 'Своя комната', price: 140 },
+  { id: 5, name: 'Досрочный вход', price: 160 },
+  { id: 6, name: 'Дуэлянт', price: 180 },
+  { id: 7, name: 'Сыровар', price: 200 },
+  { id: 8, name: '100 побед', price: 250 },
+  { id: 9, name: 'Ночной игрок', price: 300 },
+  { id: 10, name: 'Мастер слова', price: 350 },
+  { id: 11, name: 'Легенда', price: 400 },
+];
+const TITLES_BY_ID = new Map(TITLES.map((t) => [t.id, t]));
+
+const walletCache = new Map();
+
+function todayKey(now) {
+  return new Date(now === undefined ? Date.now() : now).toISOString().slice(0, 10);
+}
+
+function emptyWallet() {
+  return {
+    coins: 0,
+    titleId: 0,
+    ownedTitles: [0],
+    videosToday: 0,
+    rewardDay: '',
+    lastRewardAt: 0,
+    streak: 0,
+    streakDay: '',
+  };
+}
+
+function normalizeWallet(d) {
+  const w = emptyWallet();
+  if (!d) return w;
+  if (Number.isFinite(d.coins)) w.coins = Math.max(0, Math.floor(d.coins));
+  if (Number.isFinite(d.titleId) && TITLES_BY_ID.has(d.titleId)) w.titleId = d.titleId;
+  if (Array.isArray(d.ownedTitles)) {
+    w.ownedTitles = d.ownedTitles.filter((id) => Number.isFinite(id) && TITLES_BY_ID.has(id));
+  }
+  if (!w.ownedTitles.includes(0)) w.ownedTitles.push(0);
+  if (Number.isFinite(d.videosToday)) w.videosToday = Math.max(0, Math.floor(d.videosToday));
+  if (typeof d.rewardDay === 'string') w.rewardDay = d.rewardDay;
+  if (Number.isFinite(d.lastRewardAt)) w.lastRewardAt = d.lastRewardAt;
+  if (Number.isFinite(d.streak)) w.streak = Math.max(0, Math.floor(d.streak));
+  if (typeof d.streakDay === 'string') w.streakDay = d.streakDay;
+  return w;
+}
+
+async function saveWallet(userId, w) {
+  if (!db || !userId) return;
+  try {
+    await userRef(userId).set(
+      {
+        coins: w.coins,
+        titleId: w.titleId,
+        ownedTitles: w.ownedTitles,
+        videosToday: w.videosToday,
+        rewardDay: w.rewardDay,
+        lastRewardAt: w.lastRewardAt,
+        streak: w.streak,
+        streakDay: w.streakDay,
+      },
+      { merge: true },
+    );
+  } catch (err) {
+    console.warn('Не сохранить кошелёк:', err.message);
+  }
+}
+
+async function loadWallet(userId) {
+  if (!db || !userId) return emptyWallet();
+  const cached = walletCache.get(userId);
+  if (cached) return cached;
+  let w = emptyWallet();
+  let firstRun = false;
+  try {
+    const snap = await userRef(userId).get();
+    const d = snap.exists ? snap.data() : null;
+    // у игроков, заведённых до появления кошелька, поля coins нет — считаем их новыми
+    firstRun = !d || !Number.isFinite(d.coins);
+    w = normalizeWallet(d);
+  } catch (err) {
+    w = emptyWallet();
+  }
+  walletCache.set(userId, w);
+  if (firstRun) {
+    w.coins += COIN_STARTER;
+    await saveWallet(userId, w);
+  }
+  return w;
+}
+
+function rollDay(w) {
+  const day = todayKey();
+  if (w.rewardDay === day) return false;
+  w.rewardDay = day;
+  w.videosToday = 0;
+  return true;
+}
+
+function videosLeft(w) {
+  const used = w.rewardDay === todayKey() ? w.videosToday : 0;
+  return Math.max(0, VIDEO_DAILY_CAP - used);
+}
+
+function walletPayload(w) {
+  rollDay(w);
+  return {
+    coins: w.coins,
+    titleId: w.titleId,
+    ownedTitles: [...w.ownedTitles],
+    streak: w.streak,
+    videosLeft: videosLeft(w),
+  };
+}
+
+function applyStreak(w) {
+  const day = todayKey();
+  if (w.streakDay === day) return 0;
+  w.streak = w.streakDay === todayKey(Date.now() - 86400000) ? w.streak + 1 : 1;
+  w.streakDay = day;
+  let bonus = 0;
+  if (w.streak >= 7) bonus = 60;
+  else if (w.streak >= 5) bonus = 40;
+  else if (w.streak >= 3) bonus = 20;
+  if (bonus) w.coins += bonus;
+  return bonus;
+}
+
+async function grantCoins(userId, amount) {
+  if (!db || !userId || !amount) return;
+  const w = await loadWallet(userId);
+  w.coins += amount;
+  await saveWallet(userId, w);
+}
+
+async function emitWallet(userId) {
+  const sockets = nameSockets.get(userId);
+  if (!sockets || !sockets.size) return;
+  const w = await loadWallet(userId);
+  const payload = walletPayload(w);
+  sockets.forEach((sid) => io.to(sid).emit('walletState', payload));
+}
+
+// чтобы смена титула была видна сразу всем в комнате, а не после перезахода
+function applyTitleToRoom(userId, titleId) {
+  for (const room of rooms.values()) {
+    const p = room.players.find((x) => x.userId === userId);
+    if (!p) continue;
+    p.titleId = titleId;
+    sendRoom(room, room.hostId);
+    broadcastRoomList();
+    return true;
+  }
+  return false;
 }
 
 function emptyStats() {
@@ -673,6 +845,7 @@ function roomPayload(room, withPassword) {
       name: p.name,
       alive: p.alive,
       avatarId: p.avatarId || 0,
+      titleId: p.titleId || 0,
       photo: p.photo || '',
       score: p.score || 0,
       team: p.team,
@@ -817,6 +990,7 @@ function finishGame(room, winnerPlayer) {
         id: top.id,
         name: top.name,
         avatarId: top.avatarId || 0,
+        titleId: top.titleId || 0,
         photo: top.photo || '',
       };
     }
@@ -826,6 +1000,7 @@ function finishGame(room, winnerPlayer) {
       id: winnerPlayer.id,
       name: 'Команда ' + (winnerPlayer.team + 1) + ' — ' + members.map((m) => m.name).join(', '),
       avatarId: winnerPlayer.avatarId || 0,
+      titleId: winnerPlayer.titleId || 0,
       photo: winnerPlayer.photo || '',
     };
   } else if (winnerPlayer) {
@@ -833,18 +1008,43 @@ function finishGame(room, winnerPlayer) {
       id: winnerPlayer.id,
       name: winnerPlayer.name,
       avatarId: winnerPlayer.avatarId || 0,
+      titleId: winnerPlayer.titleId || 0,
       photo: winnerPlayer.photo || '',
     };
   }
   room.winner = winner;
   recordGame(room.players, winner ? winner.id : null);
+
+  // кому засчитать победу: в «командах» — всей команде победителей
+  const winIds = new Set();
+  if (winner) {
+    winIds.add(winner.id);
+    if (room.settings.mode === 'teams') {
+      const cap = room.players.find((p) => p.id === winner.id);
+      if (cap) room.players.forEach((p) => { if (p.team === cap.team) winIds.add(p.id); });
+    }
+  }
+  const rewards = {};
+  for (const p of room.players) {
+    // у гостя без аккаунта userId равен socket.id — кошелёк ему не положен
+    if (!p.userId || p.userId === p.id) continue;
+    rewards[p.id] = COIN_MATCH + (winIds.has(p.id) ? COIN_WIN : 0);
+  }
+
   sendRoom(room, room.hostId);
   sendGame(room);
   io.to(room.id).emit('gameOver', {
     winner,
     scores: gamePayload(room).scores,
     mode: room.settings.mode,
+    rewards,
   });
+  // монеты начисляем отдельной задачей, чтобы не задерживать конец игры
+  for (const p of room.players) {
+    const gain = rewards[p.id];
+    if (!gain) continue;
+    grantCoins(p.userId, gain).then(() => emitWallet(p.userId));
+  }
   if (winner) {
     sendPushToRoom(room, 'Игра окончена', 'Победил ' + winner.name + '!');
   } else {
@@ -993,8 +1193,9 @@ io.on('connection', (socket) => {
     const playerName = uniqueName(room, data.playerName);
     const userId = socketName.get(socket.id) || (data.playerName ? nameKey(data.playerName) : socket.id);
     const avatarId = Number.isFinite(data.avatarId) ? data.avatarId : 0;
+    const titleId = Number.isFinite(data.titleId) ? data.titleId : 0;
     const photo = typeof data.photo === 'string' && data.photo.length < 200000 ? data.photo : '';
-    room.players.push({ id: socket.id, userId, name: playerName, alive: true, avatarId, photo });
+    room.players.push({ id: socket.id, userId, name: playerName, alive: true, avatarId, titleId, photo });
     players.set(socket.id, { id: socket.id, userId, name: playerName, roomId: room.id });
     socket.join(room.id);
 
@@ -1053,8 +1254,9 @@ io.on('connection', (socket) => {
     const playerName = uniqueName(room, data.playerName);
     const userId = socketName.get(socket.id) || (data.playerName ? nameKey(data.playerName) : socket.id);
     const avatarId = Number.isFinite(data.avatarId) ? data.avatarId : 0;
+    const titleId = Number.isFinite(data.titleId) ? data.titleId : 0;
     const photo = typeof data.photo === 'string' && data.photo.length < 200000 ? data.photo : '';
-    room.players.push({ id: socket.id, userId, name: playerName, alive: true, avatarId, photo });
+    room.players.push({ id: socket.id, userId, name: playerName, alive: true, avatarId, titleId, photo });
     players.set(socket.id, { id: socket.id, userId, name: playerName, roomId: room.id });
     socket.join(room.id);
 
@@ -1203,8 +1405,86 @@ io.on('connection', (socket) => {
     reattachAfterReconnect(userId);
     const myPid = await ensureUser(userId, name, payload && payload.avatarId, payload && payload.photo);
     socket.emit('pid', { pid: myPid });
+    const wallet = await loadWallet(userId);
+    const prevStreakDay = wallet.streakDay;
+    const bonus = applyStreak(wallet);
+    // день серии нужно сохранять всегда, иначе на 2-м дне счётчик не растёт
+    if (wallet.streakDay !== prevStreakDay) await saveWallet(userId, wallet);
+    socket.emit('walletState', walletPayload(wallet));
+    if (bonus) socket.emit('streakBonus', { streak: wallet.streak, bonus });
     socket.emit('friendsUpdate', await buildFriendsPayload(userId));
     notifyFriendsPresence(userId);
+  });
+
+  socket.on('walletRequest', async () => {
+    const id = socketName.get(socket.id);
+    if (!id) return;
+    socket.emit('walletState', walletPayload(await loadWallet(id)));
+  });
+
+  socket.on('rewardClaim', async (payload, callback) => {
+    const respond = (r) => { if (typeof callback === 'function') callback(r); };
+    const id = socketName.get(socket.id);
+    if (!db) return respond({ ok: false, error: 'Монетки временно недоступны' });
+    if (!id) return respond({ ok: false, error: 'Войди в игру, чтобы копить монетки' });
+    const w = await loadWallet(id);
+    rollDay(w);
+    if (videosLeft(w) <= 0) {
+      return respond({ ok: false, error: 'Дневной лимит роликов выбран, приходи завтра' });
+    }
+    const wait = VIDEO_MIN_INTERVAL_MS - (Date.now() - w.lastRewardAt);
+    if (wait > 0) {
+      return respond({ ok: false, error: 'Подожди ' + Math.ceil(wait / 1000) + ' сек' });
+    }
+    w.videosToday += 1;
+    w.lastRewardAt = Date.now();
+    w.coins += COIN_PER_VIDEO;
+    await saveWallet(id, w);
+    const state = walletPayload(w);
+    socket.emit('walletState', state);
+    respond({ ok: true, gained: COIN_PER_VIDEO, wallet: state });
+  });
+
+  socket.on('shopBuy', async (payload, callback) => {
+    const respond = (r) => { if (typeof callback === 'function') callback(r); };
+    const id = socketName.get(socket.id);
+    if (!db) return respond({ ok: false, error: 'Магазин временно недоступен' });
+    if (!id) return respond({ ok: false, error: 'Войди в игру, чтобы покупать' });
+    const title = TITLES_BY_ID.get(payload && payload.titleId);
+    if (!title) return respond({ ok: false, error: 'Такого титула нет' });
+    if (title.price <= 0) return respond({ ok: false, error: 'Этот титул уже твой' });
+    const w = await loadWallet(id);
+    if (w.ownedTitles.includes(title.id)) return respond({ ok: false, error: 'Уже куплено' });
+    if (w.coins < title.price) {
+      return respond({ ok: false, error: 'Не хватает ' + (title.price - w.coins) + ' монет', need: title.price - w.coins });
+    }
+    w.coins -= title.price;
+    w.ownedTitles.push(title.id);
+    w.titleId = title.id; // купил — сразу надел
+    await saveWallet(id, w);
+    applyTitleToRoom(id, title.id);
+    const state = walletPayload(w);
+    socket.emit('walletState', state);
+    respond({ ok: true, titleId: title.id, wallet: state });
+  });
+
+  socket.on('shopEquip', async (payload, callback) => {
+    const respond = (r) => { if (typeof callback === 'function') callback(r); };
+    const id = socketName.get(socket.id);
+    if (!db) return respond({ ok: false, error: 'Магазин временно недоступен' });
+    if (!id) return respond({ ok: false, error: 'Войди в игру' });
+    const raw = payload && payload.titleId;
+    const w = await loadWallet(id);
+    const titleId = raw === 0 ? 0 : raw;
+    if (titleId !== 0 && (!Number.isFinite(titleId) || !w.ownedTitles.includes(titleId))) {
+      return respond({ ok: false, error: 'Этот титул ещё не куплен' });
+    }
+    w.titleId = titleId;
+    await saveWallet(id, w);
+    applyTitleToRoom(id, titleId);
+    const state = walletPayload(w);
+    socket.emit('walletState', state);
+    respond({ ok: true, titleId, wallet: state });
   });
 
   socket.on('friendsRequest', async () => {
@@ -1234,6 +1514,7 @@ io.on('connection', (socket) => {
           pid: Number.isFinite(d.pid) ? d.pid : 0,
           name: d.name || id,
           avatarId: d.avatarId || 0,
+          titleId: d.titleId || 0,
           photo: d.photo || '',
           ...presenceFor(id),
           ...getStats(d.name || id),
@@ -1272,6 +1553,7 @@ io.on('connection', (socket) => {
               pid: Number.isFinite(d.pid) ? d.pid : 0,
               name: d.name || q,
               avatarId: d.avatarId || 0,
+              titleId: d.titleId || 0,
               photo: d.photo || '',
               ...presenceFor(q),
               ...getStats(d.name || q),
@@ -1304,6 +1586,7 @@ io.on('connection', (socket) => {
         pid: Number.isFinite(d.pid) ? d.pid : await getPid(id),
         name: d.name || id,
         avatarId: d.avatarId || 0,
+        titleId: d.titleId || 0,
         photo: d.photo || '',
         ...presenceFor(id),
         ...getStats(d.name || id),
