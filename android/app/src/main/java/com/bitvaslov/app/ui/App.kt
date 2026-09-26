@@ -1196,8 +1196,12 @@ private fun ShopScreen(state: UiState, vm: GameViewModel) {
                             def = def,
                             wallet = wallet,
                             busy = busy,
+                            canEarn = canWatch,
                             modifier = Modifier.weight(1f),
-                            onBuy = { if (canWatch) vm.watchVideoForCoins(activity, def.id) else vm.buyTitle(def.id) },
+                            onBuy = {
+                                // хватает денег — покупаем сразу, иначе смотрим ролик
+                                if (wallet.coins >= def.price) vm.buyTitle(def.id) else if (canWatch) vm.watchVideoForCoins(activity, def.id)
+                            },
                             onEquip = { vm.equipTitle(def.id) },
                         )
                     }
@@ -1213,6 +1217,7 @@ private fun TitleCard(
     def: TitleDef,
     wallet: Wallet,
     busy: Boolean,
+    canEarn: Boolean,
     modifier: Modifier = Modifier,
     onBuy: () -> Unit,
     onEquip: () -> Unit,
@@ -1233,7 +1238,11 @@ private fun TitleCard(
                 equipped -> Text("НАДЕТ", color = AppColors.Primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 owned -> NeonButton("НАДЕТЬ", onEquip, Modifier.fillMaxWidth(), enabled = !busy, height = 44.dp)
                 canBuy -> NeonButton("КУПИТЬ · ${def.price}", onBuy, Modifier.fillMaxWidth(), enabled = !busy, height = 44.dp)
-                else -> Text("${def.price} монет", color = AppColors.TextSecondary, fontSize = 12.sp)
+                else -> Column(Modifier.fillMaxWidth(), Arrangement.spacedBy(6.dp)) {
+                    Text("${def.price} монет", color = AppColors.TextSecondary, fontSize = 12.sp)
+                    // не хватает монет — тот же ролик, что и в шапке
+                    NeonButton("СМОТРЕТЬ · +10", onBuy, Modifier.fillMaxWidth(), enabled = canEarn && !busy, height = 44.dp)
+                }
             }
         }
     }
