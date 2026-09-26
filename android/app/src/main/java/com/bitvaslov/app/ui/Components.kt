@@ -1,4 +1,4 @@
-package com.bitvaslov.app.ui
+﻿package com.bitvaslov.app.ui
 
 import com.bitvaslov.app.R
 import androidx.compose.animation.core.RepeatMode
@@ -33,14 +33,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Button
@@ -1042,68 +1039,5 @@ fun ErrorBanner(
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
         )
-    }
-}
-
-/**
- * Компактное табло очков во время партии.
- * Показывает очки, текущего игрока и помечает выбывших — раньше это было видно только в финале.
- */
-@Composable
-fun ScoreStrip(
-    players: List<Player>,
-    scores: Map<String, Int>,
-    turnPlayerId: String?,
-    modifier: Modifier = Modifier,
-) {
-    if (players.isEmpty()) return
-    val ordered = remember(players, scores) {
-        players.sortedByDescending { scores[it.id] ?: 0 }
-    }
-    LazyRow(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(horizontal = 2.dp),
-    ) {
-        items(ordered, key = { it.id }) { p ->
-            val score = scores[p.id] ?: 0
-            val isTurn = p.id == turnPlayerId
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (isTurn) Color(0xFF241C33) else Color(0xFF151517))
-                    .border(
-                        width = if (isTurn) 1.dp else 0.dp,
-                        color = if (isTurn) Color(0xFF6B33D6) else Color.Transparent,
-                        shape = RoundedCornerShape(14.dp),
-                    )
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    p.name.take(8).ifBlank { "—" },
-                    fontSize = 13.sp,
-                    fontWeight = if (isTurn) FontWeight.Bold else FontWeight.Medium,
-                    color = if (p.alive) Color.White else Color(0xFF636366),
-                    maxLines = 1,
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "$score",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (p.alive) Color(0xFFB794F6) else Color(0xFF48484A),
-                )
-                if (!p.alive) {
-                    Spacer(Modifier.width(4.dp))
-                    Icon(
-                        Icons.Filled.Cancel,
-                        contentDescription = "Выбыл",
-                        tint = Color(0xFF636366),
-                        modifier = Modifier.size(13.dp),
-                    )
-                }
-            }
-        }
     }
 }

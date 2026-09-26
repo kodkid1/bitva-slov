@@ -3,7 +3,11 @@ package com.bitvaslov.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -1866,13 +1870,6 @@ private fun GameScreen(state: UiState, vm: GameViewModel) {
                     accent = Color(state.gameAccent),
                 )
             }
-            Spacer(Modifier.height(10.dp))
-            // табло очков: раньше очки были видны только в финале, а выбывшие — нигде
-            ScoreStrip(
-                players = players,
-                scores = game.scores,
-                turnPlayerId = game.turnPlayerId,
-            )
             Spacer(Modifier.weight(1f))
             GameTurnArea(
                 letter = game.requiredLetter,
@@ -1941,14 +1938,373 @@ private fun GameTurnArea(letter: String, endIn: Long, turnSeconds: Int, accent: 
 
 @Composable
 private fun ResultScreen(state: UiState, vm: GameViewModel) {
-    val w = state.winner ?: WinnerInfo("", "Никто")
-    Column(Modifier.fillMaxSize().padding(24.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-        Text("ПОБЕДИТЕЛЬ", style = MaterialTheme.typography.titleLarge, color = AppColors.Primary)
-        Spacer(Modifier.height(20.dp))
-        PlayerAvatar(w.name, 120.dp, avatarId = w.avatarId, photo = w.photo)
-        Text(w.name, style = MaterialTheme.typography.headlineMedium)
-        NeonButton("ЕЩЁ РАЗ", vm::playAgain, Modifier.fillMaxWidth().padding(top=40.dp))
-        OutlinedButton(vm::leaveRoom, Modifier.fillMaxWidth().padding(top=12.dp)) { Text("В ЛОББИ") }
+    val winner = state.winner ?: WinnerInfo("", "Никто")
+    val accent = Color(state.gameAccent)
+    val scores = state.game?.scores.orEmpty()
+    val players = state.room?.players.orEmpty()
+    val standings = remember(players, scores) {
+        players.sortedWith(
+            compareByDescending<Player> { scores[it.id] ?: it.score }.thenBy { it.name },
+        )
+    }
+    val myPlace = remember(standings, state.myId) {
+        standings.indexOfFirst { it.id == state.myId }.takeIf { it >= 0 }?.plus(1)
+    }
+    val myScore = state.myId.takeIf { it.isNotBlank() }?.let { scores[it] ?: 0 } ?: 0
+    val iWon = state.myId.isNotBlank() && winner.id == state.myId
+
+    Box(Modifier.fillMaxSize().background(Color(0xFF0B0B0B))) {
+        AnimatedGameBackdrop(accent = accent, modifier = Modifier.fillMaxSize())
+        ConfettiLayer(accent = accent, modifier = Modifier.fillMaxSize())
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(8.dp))
+            TrophyBadge(iWon = iWon, accent = accent)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = if (iWon) "ТЫ ПОБЕДИЛ" else "ПОБЕДА",
+                fontSize = 38.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                letterSpacing = 1.sp,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = if (iWon) "Поздравляем, это твой ход победил" else "Победитель игры",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = AppColors.TextSecondary,
+                textAlign = TextAlign.Center,
+            )
+
+            Spacer(Modifier.height(18.dp))
+            WinnerCard(winner = winner, isMe = iWon, accent = accent)
+
+            if (standings.size >= 2) {
+                Spacer(Modifier.height(18.dp))
+                Podium(standings = standings, scores = scores, winnerId = winner.id, myId = state.myId)
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                VictoryStat("СЛОВ", "${state.game?.totalWords ?: 0}", Modifier.weight(1f), accent)
+                VictoryStat("МОИ ОЧКИ", "$myScore", Modifier.weight(1f), accent)
+                VictoryStat(
+                    "МЕСТО",
+                    myPlace?.let { "$it из ${standings.size}" } ?: "—",
+                    Modifier.weight(1f),
+                    accent,
+                )
+            }
+
+            Spacer(Modifier.weight(1f))
+            NeonButton("ЕЩЁ РАЗ", vm::playAgain, Modifier.fillMaxWidth())
+            OutlinedButton(
+                onClick = vm::leaveRoom,
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            ) { Text("В ЛОББИ", color = Color.White) }
+        }
+    }
+}
+
+@Composable
+private fun TrophyBadge(iWon: Boolean, accent: Color) {
+    val transition = rememberInfiniteTransition(label = "trophy")
+    val float by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "float",
+    )
+    val scale = 0.94f + float * 0.06f
+
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(132.dp)) {
+        // мягкое свечение вокруг кубка
+        Box(
+            Modifier
+                .size(126.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color(0xFFFFD24A).copy(alpha = 0.30f), Color.Transparent),
+                    ),
+                ),
+        )
+        // пульсирующее кольцо
+        Box(
+            Modifier
+                .size((104 + float * 8).dp)
+                .clip(CircleShape)
+                .border(2.dp, Color(0xFFFFD24A).copy(alpha = 0.45f), CircleShape),
+        )
+        Box(
+            modifier = Modifier
+                .size(84.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFFFFE9A8), Color(0xFFFFC733), Color(0xFFE39B12)),
+                    ),
+                )
+                .border(3.dp, Color(0xFFFFF6D8), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.EmojiEvents,
+                contentDescription = null,
+                tint = Color(0xFF6B3E00),
+                modifier = Modifier.size((44 * scale).dp),
+            )
+        }
+        if (iWon) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1B1230))
+                    .border(2.dp, Color(0xFFB794F6), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(17.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WinnerCard(winner: WinnerInfo, isMe: Boolean, accent: Color) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(26.dp))
+            .background(Color(0xFF151517))
+            .border(1.dp, if (isMe) accent.copy(alpha = 0.55f) else Color(0xFF2A2A2D), RoundedCornerShape(26.dp))
+            .padding(vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(contentAlignment = Alignment.BottomCenter) {
+            PlayerAvatar(winner.name, 96.dp, avatarId = winner.avatarId, photo = winner.photo)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF241C33))
+                    .border(2.dp, Color(0xFFFFD24A), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.WorkspacePremium,
+                    contentDescription = "Победитель",
+                    tint = Color(0xFFFFD24A),
+                    modifier = Modifier.size(17.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            winner.name.ifBlank { "Никто" },
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Black,
+            color = Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
+    }
+}
+
+@Composable
+private fun Podium(
+    standings: List<Player>,
+    scores: Map<String, Int>,
+    winnerId: String,
+    myId: String,
+) {
+    val top = standings.take(3)
+    // 2 место слева, 1 место по центру повыше, 3 место справа
+    val ordered = listOf(top.getOrNull(1), top.getOrNull(0), top.getOrNull(2))
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ordered.forEachIndexed { columnIndex, p ->
+            val place = columnIndex + 1
+            if (p == null) {
+                Spacer(Modifier.weight(1f))
+                return@forEachIndexed
+            }
+            PodiumColumn(
+                player = p,
+                place = place,
+                score = scores[p.id] ?: p.score,
+                isWinner = p.id == winnerId,
+                isMe = p.id == myId,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PodiumColumn(
+    player: Player,
+    place: Int,
+    score: Int,
+    isWinner: Boolean,
+    isMe: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val (medal, label) = when (place) {
+        1 -> Color(0xFFFFD24A) to "1"
+        2 -> Color(0xFFC9D1D9) to "2"
+        else -> Color(0xFFE08A3C) to "3"
+    }
+    val blockHeight = when (place) {
+        1 -> 74.dp
+        2 -> 54.dp
+        else -> 40.dp
+    }
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(contentAlignment = Alignment.TopCenter) {
+            PlayerAvatar(
+                player.name,
+                if (isWinner) 54.dp else 44.dp,
+                avatarId = player.avatarId,
+                photo = player.photo,
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(medal),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF1A1A1A),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            player.name.take(9).ifBlank { "—" },
+            fontSize = 12.sp,
+            fontWeight = if (isMe) FontWeight.Black else FontWeight.SemiBold,
+            color = if (isMe) Color(0xFFB794F6) else Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "$score",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Black,
+            color = medal,
+        )
+        Spacer(Modifier.height(6.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(blockHeight)
+                .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(medal.copy(alpha = 0.85f), medal.copy(alpha = 0.22f)),
+                    ),
+                ),
+        )
+    }
+}
+
+@Composable
+private fun VictoryStat(label: String, value: String, modifier: Modifier = Modifier, accent: Color) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xFF151517))
+            .border(1.dp, Color(0xFF2A2A2D), RoundedCornerShape(18.dp))
+            .padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            value,
+            fontSize = 19.sp,
+            fontWeight = FontWeight.Black,
+            color = accent,
+            maxLines = 1,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = AppColors.TextSecondary,
+            maxLines = 1,
+        )
+    }
+}
+
+/** Лёгкое конфетти-опадение на фоне. Без тяжёлой анимации, только Canvas. */
+@Composable
+private fun ConfettiLayer(accent: Color, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "confetti")
+    val t by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(5000, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "confettiT",
+    )
+    val particles = remember(accent) {
+        val palette = listOf(Color(0xFFFFD24A), accent, Color(0xFFB794F6), Color.White)
+        List(20) { i ->
+            val rnd = java.util.Random(i * 7919L + 13)
+            Triple(
+                rnd.nextFloat(),                 // X
+                rnd.nextFloat(),                 // сдвиг фазы
+                0.45f + rnd.nextFloat() * 0.75f, // скорость
+            ) to palette[i % palette.size]
+        }
+    }
+    Canvas(modifier = modifier) {
+        particles.forEachIndexed { i, (seed, color) ->
+            val (x, phase, speed) = seed
+            val progress = (t * speed + phase) % 1f
+            val y = progress * size.height
+            val wobble = kotlin.math.sin(progress * 12.566f + i) * 16f
+            val px = x * size.width + wobble
+            val alpha = (kotlin.math.sin(progress * Math.PI).toFloat()).coerceIn(0f, 1f) * 0.5f
+            drawCircle(
+                color = color.copy(alpha = alpha),
+                radius = 2.5f + (i % 3) * 1.4f,
+                center = androidx.compose.ui.geometry.Offset(px, y),
+            )
+        }
     }
 }
 
