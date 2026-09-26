@@ -1069,9 +1069,10 @@ io.on('connection', (socket) => {
 
   socket.on('getRoom', () => {
     const info = players.get(socket.id);
-    if (!info) return;
+    if (!info) return socket.emit('roomGone', {});
     const room = rooms.get(info.roomId);
     if (room) sendRoom(room, socket.id);
+    else socket.emit('roomGone', {});
   });
 
   socket.on('roomListRequest', () => {
