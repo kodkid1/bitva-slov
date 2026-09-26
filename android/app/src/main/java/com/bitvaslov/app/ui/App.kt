@@ -1959,36 +1959,33 @@ private fun ResultScreen(state: UiState, vm: GameViewModel) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 36.dp, bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.weight(0.45f))
+
             Text(
                 text = if (iWon) "ТЫ ПОБЕДИЛ" else "ПОБЕДА",
-                fontSize = 34.sp,
+                fontSize = 32.sp,
                 fontWeight = FontWeight.Black,
                 color = Color.White,
                 textAlign = TextAlign.Center,
                 letterSpacing = 1.sp,
             )
-            Spacer(Modifier.height(3.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 text = if (iWon) "Это твой ход победил" else "Победитель игры",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 color = AppColors.TextSecondary,
+                textAlign = TextAlign.Center,
             )
 
-            Spacer(Modifier.height(16.dp))
-            WinnerPlate(winner = winner, isMe = iWon, accent = accent)
+            Spacer(Modifier.height(30.dp))
+            WinnerPlate(winner = winner, isMe = iWon)
 
-            if (standings.size >= 2) {
-                Spacer(Modifier.height(14.dp))
-                Podium(standings = standings, scores = scores, winnerId = winner.id, myId = state.myId)
-            }
+            Spacer(Modifier.weight(1f))
 
-            Spacer(Modifier.height(14.dp))
-            // две крупные стеклянные карточки на всю ширину
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1997,17 +1994,15 @@ private fun ResultScreen(state: UiState, vm: GameViewModel) {
                     label = "СЛОВ В ИГРЕ",
                     value = "$totalWords",
                     modifier = Modifier.weight(1f),
-                    accent = accent,
                 )
                 VictoryStat(
                     label = "МОЁ МЕСТО",
                     value = myPlace?.let { "$it из ${standings.size}" } ?: "—",
                     modifier = Modifier.weight(1f),
-                    accent = accent,
                 )
             }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(28.dp))
             VictoryActions(onAgain = vm::playAgain, onLeave = vm::leaveRoom)
         }
     }
@@ -2015,166 +2010,56 @@ private fun ResultScreen(state: UiState, vm: GameViewModel) {
 
 /** Стеклянная плашка с аватаром и ником победителя. */
 @Composable
-private fun WinnerPlate(winner: WinnerInfo, isMe: Boolean, accent: Color) {
+private fun WinnerPlate(winner: WinnerInfo, isMe: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .glassSurface(RoundedCornerShape(28.dp)),
+            .glassSurface(RoundedCornerShape(26.dp))
+            .padding(horizontal = 18.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Spacer(Modifier.width(18.dp))
-        PlayerAvatar(winner.name, 82.dp, avatarId = winner.avatarId, photo = winner.photo)
+        PlayerAvatar(winner.name, 60.dp, avatarId = winner.avatarId, photo = winner.photo)
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 winner.name.ifBlank { "Никто" },
-                fontSize = 24.sp,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Black,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(3.dp))
             Text(
                 if (isMe) "Это ты" else "Победитель",
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = if (isMe) accent else AppColors.TextSecondary,
+                color = if (isMe) Color.White else AppColors.TextSecondary,
                 maxLines = 1,
             )
         }
-        Spacer(Modifier.width(18.dp))
-    }
-}
-
-@Composable
-private fun Podium(
-    standings: List<Player>,
-    scores: Map<String, Int>,
-    winnerId: String,
-    myId: String,
-) {
-    val top = standings.take(3)
-    // 2 место слева, 1 место по центру повыше, 3 место справа
-    val ordered = listOf(top.getOrNull(1), top.getOrNull(0), top.getOrNull(2))
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        ordered.forEachIndexed { columnIndex, p ->
-            if (p == null) {
-                Spacer(Modifier.weight(1f))
-            } else {
-                PodiumColumn(
-                    player = p,
-                    place = columnIndex + 1,
-                    score = scores[p.id] ?: p.score,
-                    isWinner = p.id == winnerId,
-                    isMe = p.id == myId,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PodiumColumn(
-    player: Player,
-    place: Int,
-    score: Int,
-    isWinner: Boolean,
-    isMe: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val medal = when (place) {
-        1 -> Color(0xFFFFD24A)
-        2 -> Color(0xFFC9D1D9)
-        else -> Color(0xFFE08A3C)
-    }
-    val blockHeight = when (place) {
-        1 -> 62.dp
-        2 -> 46.dp
-        else -> 34.dp
-    }
-    Column(
-        modifier = modifier.glassSurface(RoundedCornerShape(20.dp)).padding(vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(contentAlignment = Alignment.TopCenter) {
-            PlayerAvatar(
-                player.name,
-                if (isWinner) 50.dp else 40.dp,
-                avatarId = player.avatarId,
-                photo = player.photo,
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(medal),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "$place",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color(0xFF1A1A1A),
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            player.name.take(9).ifBlank { "—" },
-            fontSize = 12.sp,
-            fontWeight = if (isMe) FontWeight.Black else FontWeight.SemiBold,
-            color = if (isMe) Color(0xFFB794F6) else Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            "$score",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Black,
-            color = medal,
-        )
-        Spacer(Modifier.height(8.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(blockHeight)
-                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(medal.copy(alpha = 0.70f), medal.copy(alpha = 0.12f)),
-                    ),
-                ),
-        )
     }
 }
 
 /** Крупная стеклянная карточка статистики на всю ширину. */
 @Composable
-private fun VictoryStat(label: String, value: String, modifier: Modifier = Modifier, accent: Color) {
+private fun VictoryStat(label: String, value: String, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
-            .height(104.dp)
+            .height(100.dp)
             .glassSurface(RoundedCornerShape(24.dp)),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             value,
-            fontSize = 32.sp,
+            fontSize = 30.sp,
             fontWeight = FontWeight.Black,
-            color = accent,
+            color = Color.White,
             maxLines = 1,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(5.dp))
         Text(
             label,
             fontSize = 11.sp,
@@ -2185,29 +2070,22 @@ private fun VictoryStat(label: String, value: String, modifier: Modifier = Modif
     }
 }
 
-/** Кнопки внахлёст друг на друге, фиолетовые и полупрозрачные. */
 @Composable
 private fun VictoryActions(onAgain: () -> Unit, onLeave: () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(112.dp),
+    Column(
+        Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        GlassActionButton(
-            text = "В ЛОББИ",
-            onClick = onLeave,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .offset(y = 42.dp),
-        )
         GlassActionButton(
             text = "ЕЩЁ РАЗ",
             onClick = onAgain,
+            modifier = Modifier.fillMaxWidth(),
             strong = true,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth(),
+        )
+        GlassActionButton(
+            text = "В ЛОББИ",
+            onClick = onLeave,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
@@ -2219,28 +2097,25 @@ private fun GlassActionButton(
     modifier: Modifier = Modifier,
     strong: Boolean = false,
 ) {
-    val shape = RoundedCornerShape(24.dp)
     Box(
         modifier = modifier
-            .height(66.dp)
+            .height(62.dp)
             .glassSurface(
-                shape = shape,
-                tint = AppColors.Primary,
-                alpha = if (strong) 0.52f else 0.30f,
+                shape = RoundedCornerShape(22.dp),
+                alpha = if (strong) 0.70f else 0.45f,
             )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text,
-            fontSize = 17.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Black,
             color = Color.White,
             letterSpacing = 0.5.sp,
         )
     }
 }
-
 @Composable
 private fun SettingsScreen(state: UiState, vm: GameViewModel) {
     val block = Color(0xFF161618)
