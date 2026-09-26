@@ -524,12 +524,34 @@ function generateRoomId() {
   return id;
 }
 
-function normalizeCode(value) {
-  return String(value == null ? '' : value).replace(/\D/g, '').slice(0, 6);
+function normalizePassword(value) {
+  return String(value == null ? '' : value).trim().slice(0, 40);
 }
 
-function codeTaken(code, exceptRoomId) {
-  return [...rooms.values()].some((r) => r.code === code && r.id !== exceptRoomId);
+const PASSWORD_MAX_TRIES = 5;
+const PASSWORD_LOCK_MS = 60 * 1000;
+
+function passwordLocked(socket, roomId) {
+  const rec = socket.data && socket.data.pwTries;
+  if (!rec || !rec[roomId]) return 0;
+  return rec[roomId].until || 0;
+}
+
+function notePasswordFail(socket, roomId) {
+  if (!socket.data) socket.data = {};
+  if (!socket.data.pwTries) socket.data.pwTries = {};
+  const rec = socket.data.pwTries[roomId] || { fails: 0, until: 0 };
+  rec.fails += 1;
+  if (rec.fails >= PASSWORD_MAX_TRIES) {
+    rec.until = Date.now() + PASSWORD_LOCK_MS;
+    rec.fails = 0;
+  }
+  socket.data.pwTries[roomId] = rec;
+  return rec.until;
+}
+
+function clearPasswordFails(socket, roomId) {
+  if (socket.data && socket.data.pwTries) delete socket.data.pwTries[roomId];
 }
 
 function uniqueName(room, name) {
@@ -553,6 +575,7 @@ function publicRoomInfo(room) {
     id: room.id,
     name: room.name,
     isPrivate: room.isPrivate,
+    hostName: room.players.length ? room.players[0].name : '',
     createdAt: room.createdAt || 0,
     players: room.players.length,
     maxPlayers: room.maxPlayers,
@@ -567,7 +590,7 @@ function roomPayload(room) {
     id: room.id,
     name: room.name,
     isPrivate: room.isPrivate,
-    code: room.isPrivate ? room.code : null,
+    password: room.hostId === socket.id ? room.password || '' : '',
     hostId: room.hostId,
     timer: room.timer,
     maxPlayers: room.maxPlayers,
@@ -843,25 +866,20 @@ io.on('connection', (socket) => {
 
     if (players.has(socket.id)) leaveRoom(socket);
 
-    let roomCode = null;
+    let roomPassword = '';
     if (isPrivate) {
-      const wanted = normalizeCode(data.code);
-      if (wanted.length < 4) {
-        if (typeof callback === 'function') callback({ ok: false, error: 'Код от 4 цифр' });
+      roomPassword = normalizePassword(data.password);
+      if (!roomPassword) {
+        if (typeof callback === 'function') callback({ ok: false, error: 'Придумай пароль для комнаты' });
         return;
       }
-      if (codeTaken(wanted)) {
-        if (typeof callback === 'function') callback({ ok: false, error: 'Этот код уже занят' });
-        return;
-      }
-      roomCode = wanted;
     }
 
     const room = {
       id: generateRoomId(),
       name,
       isPrivate,
-      code: roomCode,
+      password: roomPassword,
       hostId: socket.id,
       createdAt: Date.now(),
       timer,
@@ -917,14 +935,8 @@ io.on('connection', (socket) => {
 
   socket.on('joinRoom', (payload, callback) => {
     const data = payload || {};
-    let room = null;
-
-    if (data.code) {
-      room = [...rooms.values()].find((r) => r.isPrivate && r.code === normalizeCode(data.code));
-      if (room && data.roomId && room.id !== data.roomId) room = null;
-    } else if (data.roomId) {
-      room = rooms.get(data.roomId);
-    }
+    const roomId = String(data.roomId || '');
+    const room = roomId ? rooms.get(roomId) : null;
 
     const fail = (message) => {
       if (typeof callback === 'function') callback({ ok: false, error: message });
@@ -932,7 +944,22 @@ io.on('connection', (socket) => {
     };
 
     if (!room) return fail('Комната не найдена');
-    if (room.isPrivate && normalizeCode(data.code) !== room.code) return fail('Нужен код комнаты');
+
+    if (room.isPrivate) {
+      const lockedUntil = passwordLocked(socket, room.id);
+      if (lockedUntil > Date.now()) {
+        const seconds = Math.ceil((lockedUntil - Date.now()) / 1000);
+        return fail('Слишком много попыток, подожди ' + seconds + ' сек');
+      }
+      const attempt = normalizePassword(data.password);
+      if (!attempt || attempt !== room.password) {
+        const until = notePasswordFail(socket, room.id);
+        if (until > Date.now()) return fail('Слишком много попыток, подожди минуту');
+        return fail('Неверный пароль');
+      }
+      clearPasswordFails(socket, room.id);
+    }
+
     if (room.state !== 'lobby') return fail('Игра уже идёт');
     if (room.players.length >= room.maxPlayers) return fail('Комната заполнена');
     if (players.has(socket.id)) leaveRoom(socket);
@@ -1019,7 +1046,7 @@ io.on('connection', (socket) => {
         id,
         name: 'Тест ' + (i + 1),
         isPrivate: false,
-        code: null,
+        password: '',
         hostId: null,
         timer: 15,
         initialTimer: 15,
@@ -1330,7 +1357,6 @@ io.on('connection', (socket) => {
     if (!mine.friends.includes(toId)) return respond({ error: 'Звать можно только друзей' });
     const invite = {
       roomId: room.id,
-      code: room.code || '',
       roomName: room.name,
       fromName: info.name,
     };
@@ -1345,7 +1371,6 @@ io.on('connection', (socket) => {
     sendPush(toId, invitedName, 'Приглашение в комнату', info.name + ' зовёт в «' + room.name + '»', {
       type: 'invite',
       roomId: room.id,
-      code: room.code || '',
       roomName: room.name,
       fromName: info.name,
     });
