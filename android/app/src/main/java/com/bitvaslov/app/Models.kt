@@ -7,7 +7,7 @@ enum class Screen {
     CONNECT,
     LOBBY,
     CREATEROOM,
-    CODEENTRY,
+    PASSWORD,
     SETTINGS,
     ROOM,
     GAME,
@@ -81,6 +81,7 @@ data class UserSummary(
 data class UserProfile(
     val id: String,
     val name: String,
+    val pid: Int = 0,
     val avatarId: Int = 0,
     val photo: String = "",
     val online: Boolean = false,
@@ -102,6 +103,7 @@ data class UserProfile(
         fun fromJson(o: JSONObject) = UserProfile(
             id = o.optString("id", ""),
             name = o.optString("name", ""),
+            pid = o.optInt("pid", 0),
             avatarId = o.optInt("avatarId", 0),
             photo = o.optString("photo", ""),
             online = o.optBoolean("online", false),
@@ -121,14 +123,12 @@ data class UserProfile(
 
 data class RoomInvite(
     val roomId: String,
-    val code: String,
     val roomName: String,
     val fromName: String,
 ) {
     companion object {
         fun fromJson(o: JSONObject) = RoomInvite(
             roomId = o.optString("roomId", ""),
-            code = o.optString("code", ""),
             roomName = o.optString("roomName", ""),
             fromName = o.optString("fromName", ""),
         )
@@ -173,7 +173,7 @@ data class RoomState(
     val id: String,
     val name: String,
     val isPrivate: Boolean,
-    val code: String?,
+    val password: String = "",
     val hostId: String,
     val timer: Int,
     val maxPlayers: Int,
@@ -201,8 +201,8 @@ data class RoomState(
             return RoomState(
                 id = o.optString("id", ""),
                 name = o.optString("name", ""),
-                isPrivate = o.optBoolean("isPrivate", false),
-                code = if (o.isNull("code")) null else o.optString("code", ""),
+            isPrivate = o.optBoolean("isPrivate", false),
+            password = o.optString("password", ""),
                 hostId = o.optString("hostId", ""),
                 timer = o.optInt("timer", 15),
                 maxPlayers = o.optInt("maxPlayers", 6),
@@ -217,7 +217,7 @@ data class RoomState(
         }
     }
 
-    val isHost: Boolean get() = hostId == MyIds.current
+    val isHost: Boolean get() = hostId == MyIds.current || players.firstOrNull()?.id == MyIds.current
 }
 
 data class RoomSummary(
@@ -227,6 +227,9 @@ data class RoomSummary(
     val maxPlayers: Int,
     val timer: Int,
     val mode: String = "classic",
+    val isPrivate: Boolean = false,
+    val hostName: String = "",
+    val createdAt: Long = 0,
 ) {
     companion object {
         fun fromJson(o: JSONObject) = RoomSummary(
@@ -236,6 +239,9 @@ data class RoomSummary(
             maxPlayers = o.optInt("maxPlayers", 6),
             timer = o.optInt("timer", 15),
             mode = o.optString("mode", "classic"),
+            isPrivate = o.optBoolean("isPrivate", false),
+            hostName = o.optString("hostName", ""),
+            createdAt = o.optLong("createdAt", 0),
         )
     }
 }
@@ -246,6 +252,7 @@ data class GameState(
     val turnPlayerId: String?,
     val endIn: Long,
     val timer: Int,
+    val turnSeconds: Int = 0,
     val usedWords: List<String>,
     val finished: Boolean,
     val mode: String = "classic",
@@ -278,6 +285,7 @@ data class GameState(
                 turnPlayerId = if (o.isNull("turnPlayerId")) null else o.optString("turnPlayerId", ""),
                 endIn = o.optLong("endIn", 15000),
                 timer = o.optInt("timer", 15),
+                turnSeconds = o.optInt("turnSeconds", o.optInt("timer", 15)),
                 usedWords = words,
                 finished = o.optString("state", "playing") == "finished",
                 mode = mode,

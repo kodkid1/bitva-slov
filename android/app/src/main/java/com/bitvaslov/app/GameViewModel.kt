@@ -20,6 +20,7 @@ class GameViewModel : ViewModel() {
             vibrationOn = SettingsStore.vibrationOn,
             vibrationIntensity = SettingsStore.vibrationIntensity,
             notificationsOn = SettingsStore.notificationsOn,
+            gameAccent = SettingsStore.gameAccent,
         )
     )
     val ui: StateFlow<UiState> = _ui.asStateFlow()
@@ -71,8 +72,12 @@ class GameViewModel : ViewModel() {
         roomListJob?.cancel()
         roomListJob = viewModelScope.launch {
             while (true) {
-                delay(4000)
-                if (_ui.value.screen == Screen.LOBBY) client?.refreshRooms()
+                delay(3000)
+                when (_ui.value.screen) {
+                    Screen.LOBBY -> client?.refreshRooms()
+                    Screen.ROOM -> client?.requestRoom()
+                    else -> Unit
+                }
             }
         }
     }
@@ -101,10 +106,14 @@ class GameViewModel : ViewModel() {
     fun requestCreateRoom() = _ui.update { it.copy(screen = Screen.CREATEROOM) }
     fun dismissCreateRoom() = _ui.update { it.copy(screen = Screen.LOBBY) }
 
-    fun requestCodeEntry() = _ui.update { it.copy(screen = Screen.CODEENTRY) }
-    fun dismissCodeEntry() = _ui.update { it.copy(screen = Screen.LOBBY) }
+    fun requestPassword(roomId: String, roomName: String) = _ui.update {
+        it.copy(screen = Screen.PASSWORD, pendingRoomId = roomId, pendingRoomName = roomName, passwordFails = 0)
+    }
+    fun dismissPassword() = _ui.update {
+        it.copy(screen = Screen.LOBBY, pendingRoomId = null, pendingRoomName = "", passwordFails = 0)
+    }
 
-    fun copyRoomCode(code: String) = _ui.update { it.copy(toast = "Код $code скопирован") }
+    fun copyRoomPassword(password: String) = _ui.update { it.copy(toast = "Пароль скопирован") }
 
     fun createRoom(
         roomName: String,
@@ -115,7 +124,8 @@ class GameViewModel : ViewModel() {
         minWordLen: Int = 0,
         randomTimer: Boolean = false,
         acceleration: Boolean = false,
-        theme: String = ""
+        theme: String = "",
+        password: String? = null
     ) {
         val now = System.currentTimeMillis()
         if (now - lastCreateAt < 2000) return
@@ -132,7 +142,8 @@ class GameViewModel : ViewModel() {
             minWordLen,
             randomTimer,
             acceleration,
-            theme
+            theme,
+            password
         )
     }
 
@@ -147,11 +158,26 @@ class GameViewModel : ViewModel() {
     }
 
     fun joinRoomById(roomId: String) {
+        val room = _ui.value.rooms.firstOrNull { it.id == roomId }
+        if (room != null && room.isPrivate) {
+            requestPassword(room.id, room.name)
+            return
+        }
         client?.joinRoom(_ui.value.myName, roomId = roomId, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
     }
 
-    fun joinRoomByCode(code: String) {
-        client?.joinRoom(_ui.value.myName, code = code, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
+    fun joinRoomByPassword(password: String) {
+        val roomId = _ui.value.pendingRoomId ?: return
+        val value = password.trim()
+        if (value.isEmpty()) return
+        _ui.update { it.copy(passwordFails = it.passwordFails + 1) }
+        client?.joinRoom(
+            _ui.value.myName,
+            roomId = roomId,
+            password = value,
+            avatarId = _ui.value.myAvatarId,
+            photo = _ui.value.myPhoto,
+        )
     }
 
     fun startGame() = client?.startGame()
@@ -190,6 +216,11 @@ class GameViewModel : ViewModel() {
         SettingsStore.setNotifications(on)
         _ui.update { it.copy(notificationsOn = on) }
         syncPush()
+    }
+
+    fun setGameAccent(color: Int) {
+        SettingsStore.setGameAccent(color)
+        _ui.update { it.copy(gameAccent = color) }
     }
 
     fun setActive(active: Boolean) {
@@ -242,9 +273,7 @@ class GameViewModel : ViewModel() {
     fun acceptInvite() {
         val invite = _ui.value.incomingInvite ?: return
         _ui.update { it.copy(incomingInvite = null) }
-        val name = _ui.value.myName.trim()
-        if (invite.roomId.isNotBlank()) client?.joinRoom(name, roomId = invite.roomId, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
-        else if (invite.code.isNotBlank()) client?.joinRoom(name, code = invite.code, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
+        if (invite.roomId.isNotBlank()) joinRoomById(invite.roomId)
     }
 
     fun declineInvite() = _ui.update { it.copy(incomingInvite = null) }
@@ -267,24 +296,47 @@ class GameViewModel : ViewModel() {
                     client?.requestFriends()
                     if (DeepLink.hasInvite) {
                         val roomId = DeepLink.roomId
-                        val code = DeepLink.code
                         DeepLink.clear()
                         val name = _ui.value.myName.trim()
-                        if (!roomId.isNullOrBlank()) client?.joinRoom(name, roomId = roomId, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
-                        else if (!code.isNullOrBlank()) client?.joinRoom(name, code = code, avatarId = _ui.value.myAvatarId, photo = _ui.value.myPhoto)
+                        if (!roomId.isNullOrBlank()) joinRoomById(roomId)
                     }
                 }
 
                 "disconnected" -> {
                     _ui.update { s ->
-                        s.copy(toast = "Соединение потеряно, переподключение...", winner = null)
+                        s.copy(offline = true, toast = "Соединение потеряно, переподключаюсь...", winner = null)
+                    }
+                }
+
+                "roomReplaced" -> {
+                    _ui.update {
+                        it.copy(
+                            screen = Screen.LOBBY,
+                            room = null,
+                            game = null,
+                            winner = null,
+                            toast = "Подключение обновилось — войди в комнату заново",
+                        )
+                    }
+                }
+
+                "roomGone" -> {
+                    _ui.update {
+                        it.copy(
+                            screen = Screen.LOBBY,
+                            room = null,
+                            game = null,
+                            winner = null,
+                            offline = false,
+                            toast = "Комната закрылась",
+                        )
                     }
                 }
 
                 "roomList" -> {
                     val arr = data as? JSONArray ?: return@launch
                     val rooms = (0 until arr.length()).map { RoomSummary.fromJson(arr.getJSONObject(it)) }
-                    _ui.update { it.copy(rooms = rooms) }
+                    _ui.update { it.copy(rooms = rooms, offline = false) }
                 }
 
                 "roomUpdate" -> {
@@ -293,6 +345,7 @@ class GameViewModel : ViewModel() {
                     _ui.update { s ->
                         s.copy(
                             room = room,
+                            offline = false,
                             screen = if (room.state == "lobby") Screen.ROOM else s.screen,
                             game = null,
                             winner = null,
@@ -395,6 +448,12 @@ class GameViewModel : ViewModel() {
                     }
                 }
 
+                "pid" -> {
+                    val o = data as? JSONObject
+                    val p = o?.optInt("pid", 0) ?: 0
+                    if (p > 0) _ui.update { it.copy(myPid = p) }
+                }
+
                 "friendsUpdate" -> {
                     val o = data as? JSONObject ?: return@launch
                     val fArr = o.optJSONArray("friends") ?: JSONArray()
@@ -418,9 +477,14 @@ class GameViewModel : ViewModel() {
                     val online = o.optBoolean("online", false)
                     val inGame = o.optBoolean("inGame", false)
                     _ui.update { s ->
-                        s.copy(friends = s.friends.map {
-                            if (it.id == friendId) it.copy(online = online, inGame = inGame) else it
-                        })
+                        s.copy(
+                            friends = s.friends.map {
+                                if (it.id == friendId) it.copy(online = online, inGame = inGame) else it
+                            },
+                            searchResults = s.searchResults.map {
+                                if (it.id == friendId) it.copy(online = online, inGame = inGame) else it
+                            },
+                        )
                     }
                 }
 
@@ -437,7 +501,10 @@ class GameViewModel : ViewModel() {
 
                 "_ack_friend" -> {
                     val o = data as? JSONObject
-                    if (o?.optBoolean("ok", false) != true) {
+                    if (o?.optBoolean("ok", false) == true) {
+                        _ui.update { it.copy(searchResults = emptyList()) }
+                        client?.requestFriends()
+                    } else {
                         _ui.update { it.copy(error = o?.optString("error", "Не получилось") ?: "Не получилось") }
                     }
                 }
@@ -468,11 +535,16 @@ class GameViewModel : ViewModel() {
 data class UiState(
     val screen: Screen = Screen.CONNECT,
     val serverUrl: String = "https://bitva-slov.onrender.com",
+    val offline: Boolean = false,
     val myId: String = "",
+    val myPid: Int = 0,
     val myName: String = "",
     val myAvatarId: Int = 0,
     val myPhoto: String = "",
     val rooms: List<RoomSummary> = emptyList(),
+    val pendingRoomId: String? = null,
+    val pendingRoomName: String = "",
+    val passwordFails: Int = 0,
     val room: RoomState? = null,
     val game: GameState? = null,
     val winner: WinnerInfo? = null,
@@ -490,4 +562,5 @@ data class UiState(
     val vibrationOn: Boolean = true,
     val vibrationIntensity: Float = 0.5f,
     val notificationsOn: Boolean = true,
+    val gameAccent: Int = SettingsStore.DEFAULT_ACCENT,
 )

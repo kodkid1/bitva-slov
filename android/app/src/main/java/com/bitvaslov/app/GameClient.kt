@@ -40,7 +40,8 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         minWordLen: Int = 0,
         randomTimer: Boolean = false,
         acceleration: Boolean = false,
-        theme: String = ""
+        theme: String = "",
+        password: String? = null
     ) {
         val o = JSONObject()
         o.put("playerName", playerName)
@@ -54,6 +55,7 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         o.put("randomTimer", randomTimer)
         o.put("acceleration", acceleration)
         o.put("theme", theme)
+        if (isPrivate && !password.isNullOrBlank()) o.put("password", password.trim())
         if (photo.isNotBlank()) o.put("photo", photo)
         socket?.emit("createRoom", o, callback("_ack_create"))
     }
@@ -74,13 +76,13 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
         socket?.emit("setRoomSettings", o)
     }
 
-    fun joinRoom(playerName: String, roomId: String? = null, code: String? = null, avatarId: Int = 0, photo: String = "") {
+    fun joinRoom(playerName: String, roomId: String? = null, password: String? = null, avatarId: Int = 0, photo: String = "") {
         val o = JSONObject()
         o.put("playerName", playerName)
         o.put("avatarId", avatarId)
         if (photo.isNotBlank()) o.put("photo", photo)
         if (roomId != null) o.put("roomId", roomId)
-        if (code != null) o.put("code", code)
+        if (password != null) o.put("password", password)
         socket?.emit("joinRoom", o, callback("_ack_join"))
     }
 
@@ -98,6 +100,10 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
 
     fun refreshRooms() {
         socket?.emit("roomListRequest")
+    }
+
+    fun requestRoom() {
+        socket?.emit("getRoom")
     }
 
     fun requestStats(name: String) {
@@ -236,6 +242,18 @@ class GameClient(private val onEvent: (String, Any?) -> Unit) {
 
         s.on("userSearchResult") { args ->
             onEvent("userSearchResult", args.firstOrNull() as? JSONArray)
+        }
+
+        s.on("pid") { args ->
+            onEvent("pid", args.firstOrNull() as? JSONObject)
+        }
+
+        s.on("roomReplaced") {
+            onEvent("roomReplaced", null)
+        }
+
+        s.on("roomGone") {
+            onEvent("roomGone", null)
         }
     }
 }
