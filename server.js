@@ -1000,6 +1000,13 @@ io.on('connection', (socket) => {
     beginGame(room);
   });
 
+  socket.on('getRoom', () => {
+    const info = players.get(socket.id);
+    if (!info) return;
+    const room = rooms.get(info.roomId);
+    if (room) sendRoom(room, socket.id);
+  });
+
   socket.on('roomListRequest', () => {
     broadcastRoomList();
   });
