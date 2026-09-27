@@ -27,6 +27,79 @@ app.get('/api/status', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
+const IS_PROD = process.env.NODE_ENV === 'production';
+const DEBUG_EVENTS = new Set(['spawnTestRooms', 'clearTestRooms']);
+const MAX_CONNECTIONS = 400;
+
+// Ограничитель частоты: ведро токенов на каждый сокет и событие.
+// Обходятся все клиентские события разом, поэтому новые хендлеры защищены автоматически.
+const EVENT_LIMITS = {
+  createRoom: { per: 60000, max: 6 },
+  joinRoom: { per: 60000, max: 20 },
+  leaveRoom: { per: 60000, max: 30 },
+  submitWord: { per: 30000, max: 20 },
+  rewardClaim: { per: 60000, max: 6 },
+  login: { per: 60000, max: 8 },
+  userSearch: { per: 60000, max: 30 },
+  friendsRequest: { per: 60000, max: 30 },
+  roomListRequest: { per: 10000, max: 30 },
+  setRoomSettings: { per: 60000, max: 40 },
+  setActive: { per: 10000, max: 20 },
+  registerPush: { per: 60000, max: 8 },
+  unregisterPush: { per: 60000, max: 8 },
+  statsRequest: { per: 60000, max: 20 },
+  walletRequest: { per: 30000, max: 20 },
+  shopBuy: { per: 60000, max: 20 },
+  shopEquip: { per: 60000, max: 20 },
+  spawnTestRooms: { per: 60000, max: 4 },
+  clearTestRooms: { per: 60000, max: 4 },
+};
+const DEFAULT_EVENT_LIMIT = { per: 10000, max: 40 };
+
+function takeToken(bucket, limit) {
+  const now = Date.now();
+  if (bucket.tokens === undefined) {
+    bucket.tokens = limit.max;
+    bucket.ts = now;
+  }
+  const rate = limit.max / limit.per;
+  bucket.tokens = Math.min(limit.max, bucket.tokens + (now - bucket.ts) * rate);
+  bucket.ts = now;
+  if (bucket.tokens < 1) return false;
+  bucket.tokens -= 1;
+  return true;
+}
+
+// Награда за ролик выдаётся только после настоящих сыгранных ходов:
+// полностью подтвердить просмотр рекламы без постбэка Яндекса нельзя.
+const REWARD_TURNS_REQUIRED = 3;
+const rewardTurns = new Map();
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function bumpRewardTurns(userId) {
+  const day = todayKey();
+  const rec = rewardTurns.get(userId);
+  if (rec && rec.day === day) {
+    rec.turns += 1;
+    return;
+  }
+  rewardTurns.set(userId, { turns: 1, day });
+  if (rewardTurns.size > 5000) {
+    for (const [key, val] of rewardTurns) {
+      if (val.day !== day) rewardTurns.delete(key);
+    }
+  }
+}
+
+function rewardTurnsPlayed(userId) {
+  const rec = rewardTurns.get(userId);
+  if (!rec || rec.day !== todayKey()) return 0;
+  return rec.turns;
+}
+
 process.on('unhandledRejection', (err) => {
   console.warn('Необработанная ошибка:', err && err.message ? err.message : err);
 });
@@ -1137,6 +1210,39 @@ function leaveRoomById(socketId, knownSocket) {
 }
 
 io.on('connection', (socket) => {
+  if (io.engine.clientsCount > MAX_CONNECTIONS) {
+    socket.emit('errorMessage', { message: 'Сервер перегружен. Попробуй через минуту.' });
+    socket.disconnect(true);
+    return;
+  }
+
+  socket.data.buckets = Object.create(null);
+  socket.data.blocked = 0;
+
+  // Единая точка отсечения: дебаг-команды и спам отсекаются до хендлеров
+  socket.use((packet, next) => {
+    const event = packet && packet[0];
+    if (IS_PROD && DEBUG_EVENTS.has(event)) {
+      socket.data.blocked += 1;
+      if (socket.data.blocked <= 5) {
+        console.warn('[SECURITY] blocked debug event ' + event + ' from ' + socket.id);
+      }
+      return;
+    }
+    const limit = EVENT_LIMITS[event] || DEFAULT_EVENT_LIMIT;
+    let bucket = socket.data.buckets[event];
+    if (!bucket) {
+      bucket = { tokens: 0, ts: 0 };
+      socket.data.buckets[event] = bucket;
+    }
+    if (!takeToken(bucket, limit)) {
+      console.warn('[RATE] ' + event + ' from ' + socket.id);
+      socket.emit('errorMessage', { message: 'Слишком много запросов. Подожди немного.' });
+      return;
+    }
+    next();
+  });
+
   socket.emit('connected', { id: socket.id });
   socket.emit('roomList', listableRooms());
 
@@ -1299,6 +1405,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('clearTestRooms', (payload) => {
+    if (IS_PROD) return;
     const prefix = (payload && payload.prefix) || 'Тест ';
     let removed = 0;
     [...rooms.entries()].forEach(([id, room]) => {
@@ -1321,6 +1428,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('spawnTestRooms', (payload) => {
+    if (IS_PROD) return;
     const map = payload && payload.count;
     let count = Number.isFinite(map) ? Math.round(map) : 30;
     count = Math.min(Math.max(count, 1), 200);
@@ -1437,9 +1545,17 @@ io.on('connection', (socket) => {
     if (wait > 0) {
       return respond({ ok: false, error: 'Подожди ' + Math.ceil(wait / 1000) + ' сек' });
     }
+    const played = rewardTurnsPlayed(id);
+    if (played < REWARD_TURNS_REQUIRED) {
+      return respond({
+        ok: false,
+        error: 'Сыграй ещё ' + (REWARD_TURNS_REQUIRED - played) + ' ходов, прежде чем смотреть ролик',
+      });
+    }
     w.videosToday += 1;
     w.lastRewardAt = Date.now();
     w.coins += COIN_PER_VIDEO;
+    rewardTurns.set(id, { turns: 0, day: todayKey() });
     await saveWallet(id, w);
     const state = walletPayload(w);
     socket.emit('walletState', state);
@@ -1805,6 +1921,8 @@ io.on('connection', (socket) => {
     room.usedWords.add(word);
     room.usedWordsCount += 1;
     room.lastWord = word;
+    const rewardUserId = socketName.get(socket.id);
+    if (rewardUserId) bumpRewardTurns(rewardUserId);
     room.requiredLetter = nextLetterFrom(word);
     socket.emit('wordAccepted', {
       word,
