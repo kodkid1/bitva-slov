@@ -473,9 +473,10 @@ function applyStreak(w) {
   w.streak = w.streakDay === todayKey(Date.now() - 86400000) ? w.streak + 1 : 1;
   w.streakDay = day;
   let bonus = 0;
+  // бонус только в 3-й, 5-й и с 7-го дня дальше — 4-й и 6-й без начисления
   if (w.streak >= 7) bonus = 60;
-  else if (w.streak >= 5) bonus = 40;
-  else if (w.streak >= 3) bonus = 20;
+  else if (w.streak === 5) bonus = 40;
+  else if (w.streak === 3) bonus = 20;
   if (bonus) w.coins += bonus;
   return bonus;
 }
