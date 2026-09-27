@@ -5,6 +5,16 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+import java.util.Properties
+
+val keystorePropsFile = rootProject.file("../keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) {
+        keystorePropsFile.inputStream().use { load(it) }
+    }
+}
+val hasReleaseKey = keystoreProps.getProperty("storeFile")?.let { file(it.replace('\\', '/')).exists() } == true
+
 android {
     namespace = "com.bitvaslov.app"
     compileSdk = 35
@@ -17,13 +27,27 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile").replace('\\', '/'))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // R8 включаем только после прогона всех сценариев: без проверки он рвёт Socket.IO и пуши
             isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
@@ -58,4 +82,5 @@ dependencies {
         exclude(group = "org.json", module = "json")
     }
     implementation("com.google.android.gms:play-services-ads-api:25.5.0")
+    implementation("androidx.fragment:fragment:1.8.5")
 }

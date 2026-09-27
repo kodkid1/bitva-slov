@@ -387,7 +387,8 @@ private fun MenuTab(state: UiState, vm: GameViewModel, onSelectTab: (Int) -> Uni
                 ) {
                     Text("Создать комнату", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
-                WalletStrip(state, vm)
+                // Плашка баланса и магазин титулов — временно отключены
+                // WalletStrip(state, vm)
             }
             Spacer(Modifier.height(14.dp))
             Column(

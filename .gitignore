@@ -3,6 +3,7 @@ node_modules/
 server.pid
 firebase-admin.json
 secrets/
+keystore.properties
 .env
 android/.gradle/
 android/.idea/

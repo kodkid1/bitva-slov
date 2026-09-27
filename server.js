@@ -75,6 +75,14 @@ function takeToken(bucket, limit) {
 const REWARD_TURNS_REQUIRED = 3;
 const rewardTurns = new Map();
 
+function plural(n, one, few, many) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+}
+
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -1546,10 +1554,11 @@ io.on('connection', (socket) => {
       return respond({ ok: false, error: 'Подожди ' + Math.ceil(wait / 1000) + ' сек' });
     }
     const played = rewardTurnsPlayed(id);
+    const left = REWARD_TURNS_REQUIRED - played;
     if (played < REWARD_TURNS_REQUIRED) {
       return respond({
         ok: false,
-        error: 'Сыграй ещё ' + (REWARD_TURNS_REQUIRED - played) + ' ходов, прежде чем смотреть ролик',
+        error: 'Сыграй ещё ' + left + ' ' + plural(left, 'ход', 'хода', 'ходов') + ', прежде чем смотреть ролик',
       });
     }
     w.videosToday += 1;
