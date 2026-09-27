@@ -45,6 +45,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -1110,74 +1111,65 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
 private fun WalletCard(state: UiState, vm: GameViewModel) {
     val wallet = state.wallet
     val next = TitleCatalog.nextAffordable(wallet.coins)
+    // компактная строка: весь блок открывает магазин
     Column(
         Modifier
             .fillMaxWidth()
-            .glassSurface(RoundedCornerShape(26.dp), alpha = 0.66f)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .glassSurface(RoundedCornerShape(20.dp), alpha = 0.60f)
+            .clickable { vm.requestShop() }
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            CoinDot(34.dp)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "${wallet.coins}",
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White,
-                )
-                Text(
-                    "МОНЕТ",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AppColors.TextSecondary,
-                    letterSpacing = 1.5.sp,
-                )
-            }
+            CoinDot(20.dp)
+            Spacer(Modifier.width(7.dp))
+            Text(
+                "${wallet.coins}",
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White,
+            )
             if (wallet.streak > 0) {
+                Spacer(Modifier.width(8.dp))
                 StatChip("серия ${wallet.streak}", color = AppColors.Warning)
             }
+            Spacer(Modifier.weight(1f))
+            Text(
+                "МАГАЗИН",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp,
+                color = AppColors.Warning,
+            )
+            Spacer(Modifier.width(4.dp))
+            Image(
+                painterResource(R.drawable.ic_forward),
+                null,
+                modifier = Modifier.size(14.dp),
+            )
         }
-
-        if (wallet.titleId != 0) {
-            PlayerTitleBadge(wallet.titleId, fontSize = 12.sp)
-        }
-
         if (next != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row {
-                    Text(
-                        "До «${next.name}»",
-                        color = AppColors.TextSecondary,
-                        fontSize = 13.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        "ещё ${next.price - wallet.coins}",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                ThinProgress(
-                    value = (wallet.coins.toFloat() / next.price).coerceIn(0f, 1f),
-                    color = AppColors.Warning,
-                )
-            }
+            ThinProgress(
+                value = (wallet.coins.toFloat() / next.price).coerceIn(0f, 1f),
+                color = AppColors.Warning,
+                height = 4.dp,
+            )
+            Text(
+                "до «${next.name}» ещё ${next.price - wallet.coins}",
+                color = AppColors.TextSecondary,
+                fontSize = 11.sp,
+            )
         }
-
-        GlassActionButton("МАГАЗИН ТИТУЛОВ", { vm.requestShop() }, Modifier.fillMaxWidth())
     }
 }
 
 /** Тонкая полоска прогресса — используется в кошельке и магазине. */
 @Composable
-private fun ThinProgress(value: Float, color: Color = AppColors.Primary) {
+private fun ThinProgress(value: Float, color: Color = AppColors.Primary, height: Dp = 6.dp) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(6.dp)
+            .height(height)
             .clip(RoundedCornerShape(50))
             .background(Color.White.copy(alpha = 0.10f)),
     ) {
