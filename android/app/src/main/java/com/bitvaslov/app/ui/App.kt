@@ -2584,13 +2584,13 @@ private fun SettingsScreen(
                     SettingsLinkRow(
                         "Политика конфиденциальности",
                         "Какие данные собираем и зачем",
-                        "https://bitva-slov.onrender.com/privacy.html",
+                        "https://kodkid1.github.io/bitva-slov/privacy/",
                     )
                     SettingsDivider(divider)
                     SettingsLinkRow(
                         "Удаление данных",
                         "Удалить прогресс, кошелёк и друзей",
-                        "https://bitva-slov.onrender.com/delete-account.html",
+                        "https://kodkid1.github.io/bitva-slov/delete-account/",
                     )
                 }
             }
