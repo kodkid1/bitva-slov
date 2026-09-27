@@ -120,7 +120,7 @@ fun App(vm: GameViewModel = viewModel()) {
                     Screen.CONNECT, Screen.LOBBY -> LobbyScreen(state, vm, bottomTab, backdrop, onSelectTab = { bottomTab = it })
                     Screen.CREATEROOM -> CreateRoomScreen(state, vm)
                     Screen.PASSWORD -> PasswordScreen(state, vm)
-                    Screen.SETTINGS -> SettingsScreen(state, vm)
+                    Screen.SETTINGS -> SettingsScreen(state, vm, backdrop, bottomTab, { bottomTab = it })
                     Screen.ROOM -> RoomScreen(state, vm)
                     Screen.GAME -> GameScreen(state, vm)
                     Screen.RESULT -> ResultScreen(state, vm)
@@ -166,7 +166,8 @@ private fun LobbyScreen(state: UiState, vm: GameViewModel, tab: Int, backdrop: L
             }
         }
         Column(modifier = Modifier.align(Alignment.BottomCenter)) {
-            YandexBanner(modifier = Modifier.fillMaxWidth())
+            // Баннер рекламы в меню временно отключён
+            // YandexBanner(modifier = Modifier.fillMaxWidth())
             MainBottomBar(
                 selected = tab,
                 onSelect = { onSelectTab(it); if (it == 2) vm.requestFriends() },
@@ -386,6 +387,7 @@ private fun MenuTab(state: UiState, vm: GameViewModel, onSelectTab: (Int) -> Uni
                 ) {
                     Text("Создать комнату", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
+                WalletStrip(state, vm)
             }
             Spacer(Modifier.height(14.dp))
             Column(
@@ -963,11 +965,6 @@ private fun ProfileSheet(state: UiState, p: UserProfile, vm: GameViewModel, back
                 }
                 Spacer(Modifier.height(12.dp))
             }
-            // Кошелёк и магазин титулов — только в своём профиле
-            if (p.isMe) {
-                WalletCard(state, vm)
-                Spacer(Modifier.height(12.dp))
-            }
             // Тестовая реклама — только в своём профиле
             if (p.isMe) {
                 Spacer(Modifier.height(12.dp))
@@ -1001,7 +998,7 @@ private fun ProfileSheet(state: UiState, p: UserProfile, vm: GameViewModel, back
             selected = tab,
             onSelect = { vm.closeProfile(); onSelectTab(it); if (it == 2) vm.requestFriends() },
             backdrop = backdrop,
-            useGlass = false,
+            useGlass = true,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
@@ -1107,61 +1104,47 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
     }
 }
 
+/** Полоса баланса в «Меню»: монеты, серия и вход в магазин. */
 @Composable
-private fun WalletCard(state: UiState, vm: GameViewModel) {
+private fun WalletStrip(state: UiState, vm: GameViewModel) {
     val wallet = state.wallet
-    val next = TitleCatalog.nextAffordable(wallet.coins)
-    val hint = buildString {
-        if (wallet.streak > 0) append("серия ${wallet.streak}")
-        if (next != null) {
-            if (isNotEmpty()) append("   ·   ")
-            append("до «${next.name}» ещё ${next.price - wallet.coins}")
-        }
-    }
-    // плоский блок в стиле остальных карточек профиля, без рамки и градиента
-    Column(
+    Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF161618))
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF141416))
+            .border(1.5.dp, Color(0xFF2A2A2D), RoundedCornerShape(20.dp))
             .clickable { vm.requestShop() }
-            .padding(start = 16.dp, end = 14.dp, top = 13.dp, bottom = 15.dp),
-        verticalArrangement = Arrangement.spacedBy(11.dp),
+            .padding(start = 14.dp, end = 10.dp, top = 11.dp, bottom = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CoinDot(22.dp)
-            Spacer(Modifier.width(9.dp))
-            Text(
-                "${wallet.coins}",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White,
-            )
-            Spacer(Modifier.width(11.dp))
-            Text(
-                hint,
-                color = AppColors.TextSecondary,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+        CoinDot(20.dp)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "${wallet.coins}",
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Black,
+        )
+        Spacer(Modifier.width(5.dp))
+        Text("монет", color = AppColors.TextSecondary, fontSize = 12.sp)
+        Spacer(Modifier.weight(1f))
+        if (wallet.streak > 0) {
+            StatChip("серия ${wallet.streak}", color = AppColors.Warning)
+            Spacer(Modifier.width(8.dp))
+        }
+        Box(
+            Modifier
+                .clip(RoundedCornerShape(50))
+                .background(AppColors.Primary)
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+        ) {
             Text(
                 "МАГАЗИН",
+                color = AppColors.ContentDark,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp,
-                color = AppColors.TextSecondary,
-            )
-            Spacer(Modifier.width(5.dp))
-            Image(painterResource(R.drawable.ic_forward), null, Modifier.size(15.dp))
-        }
-        if (next != null) {
-            ThinProgress(
-                value = (wallet.coins.toFloat() / next.price).coerceIn(0f, 1f),
-                color = AppColors.Warning,
-                height = 3.dp,
             )
         }
     }
@@ -1194,6 +1177,15 @@ private fun ShopScreen(state: UiState, vm: GameViewModel) {
     val wallet = state.wallet
     val busy = state.shopBusy
     val canWatch = activity != null && wallet.videosLeft > 0 && !busy
+    // Поиск титула по ID
+    var idQuery by remember { mutableStateOf("") }
+    val typedId = idQuery.filter { it.isDigit() }.take(2).toIntOrNull()
+    val found = typedId?.let { id -> TitleCatalog.all.firstOrNull { it.id == id } }
+    val visibleTitles = when {
+        typedId == null -> TitleCatalog.all
+        found != null -> listOf(found)
+        else -> emptyList()
+    }
 
     Box(Modifier.fillMaxSize().background(Color(0xFF0B0B0B))) {
         Column(Modifier.fillMaxSize()) {
@@ -1229,6 +1221,63 @@ private fun ShopScreen(state: UiState, vm: GameViewModel) {
                         color = Color.White,
                     )
                     Spacer(Modifier.width(16.dp))
+                }
+            }
+
+            // Поиск по ID титула
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .glassSurface(RoundedCornerShape(18.dp), alpha = 0.6f)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("ID", color = AppColors.TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(12.dp))
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (idQuery.isEmpty()) {
+                        Text(
+                            "Поиск титула по номеру",
+                            color = AppColors.TextSecondary,
+                            fontSize = 14.sp,
+                        )
+                    }
+                    BasicTextField(
+                        value = idQuery,
+                        onValueChange = { idQuery = it.filter { c -> c.isDigit() }.take(2) },
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        cursorBrush = SolidColor(Color.White),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                when {
+                    typedId == null -> Unit
+                    found != null -> Text(
+                        "найден",
+                        color = AppColors.Warning,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    else -> Text(
+                        "нет такого",
+                        color = Color(0xFFFF6B6B),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                if (idQuery.isNotEmpty()) {
+                    Spacer(Modifier.width(10.dp))
+                    GlassCircleButton(onClick = { idQuery = "" }, size = 30.dp) {
+                        Text("✕", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -1286,7 +1335,7 @@ private fun ShopScreen(state: UiState, vm: GameViewModel) {
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(TitleCatalog.all.chunked(2)) { pair ->
+                items(visibleTitles.chunked(2)) { pair ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         pair.forEach { def ->
                             TitleCard(
@@ -2202,6 +2251,7 @@ private fun GameScreen(state: UiState, vm: GameViewModel) {
                 endIn = game.endIn,
                 turnSeconds = game.turnSeconds.takeIf { it > 0 } ?: game.timer,
                 accent = Color(state.gameAccent),
+                recentWords = game.usedWords.takeLast(3),
             )
             Spacer(Modifier.weight(1f))
             Row(
@@ -2234,7 +2284,13 @@ private fun GameScreen(state: UiState, vm: GameViewModel) {
 }
 
 @Composable
-private fun GameTurnArea(letter: String, endIn: Long, turnSeconds: Int, accent: Color) {
+private fun GameTurnArea(
+    letter: String,
+    endIn: Long,
+    turnSeconds: Int,
+    accent: Color,
+    recentWords: List<String> = emptyList(),
+) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(endIn) {
         while (true) {
@@ -2248,10 +2304,33 @@ private fun GameTurnArea(letter: String, endIn: Long, turnSeconds: Int, accent: 
     val secondsLeft = kotlin.math.ceil(remainingMs / 1000.0).toInt().coerceAtLeast(0)
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        // Буква по центру, слова — оверлеем над ней (не двигают разметку)
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            LetterRing(letter, fraction, size = 248.dp, accent = accent)
+            // Слова копятся вверх: каждое новое ниже, стопка центрируется по нижнему краю
+            if (recentWords.isNotEmpty()) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-134).dp),
+                ) {
+                    recentWords.forEachIndexed { index, word ->
+                        val depth = recentWords.lastIndex - index
+                        Text(
+                            word,
+                            color = Color.White.copy(alpha = 0.95f - 0.22f * depth),
+                            fontSize = (56 - 12 * depth).sp,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            // плашка поверх слов — нижнее слово уходит за стекло
+            LetterRing(letter, fraction, size = 220.dp, accent = accent)
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             "$secondsLeft",
             fontSize = 38.sp,
@@ -2427,7 +2506,13 @@ private fun GlassActionButton(
     }
 }
 @Composable
-private fun SettingsScreen(state: UiState, vm: GameViewModel) {
+private fun SettingsScreen(
+    state: UiState,
+    vm: GameViewModel,
+    backdrop: LayerBackdrop,
+    bottomTab: Int,
+    onSelectTab: (Int) -> Unit,
+) {
     val block = Color(0xFF161618)
     val divider = Color(0xFF2C2C2E)
     val accent = Color.White
@@ -2436,7 +2521,7 @@ private fun SettingsScreen(state: UiState, vm: GameViewModel) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 20.dp, end = 20.dp, top = 10.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 100.dp),
         ) {
             // Плашка заголовка, стиль как в меню
             Box(
@@ -2463,6 +2548,12 @@ private fun SettingsScreen(state: UiState, vm: GameViewModel) {
                 }
             }
             Spacer(Modifier.height(14.dp))
+            // Настройки прокручиваются — иначе цвета внизу не видно
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+            ) {
             // Настройки в списке на тёмной плашке, по контенту
             Column(
                 modifier = Modifier
@@ -2488,9 +2579,30 @@ private fun SettingsScreen(state: UiState, vm: GameViewModel) {
                     SettingsToggleRow("Уведомления", "Пуш о ходе и приглашениях", state.notificationsOn, vm::setNotificationsOn)
                     SectionLabel("Кастомизация")
                     AccentPickerRow(state.gameAccent, vm::setGameAccent)
+                    SettingsDivider(divider)
+                    SectionLabel("Документы")
+                    SettingsLinkRow(
+                        "Политика конфиденциальности",
+                        "Какие данные собираем и зачем",
+                        "https://bitva-slov.onrender.com/privacy.html",
+                    )
+                    SettingsDivider(divider)
+                    SettingsLinkRow(
+                        "Удаление данных",
+                        "Удалить прогресс, кошелёк и друзей",
+                        "https://bitva-slov.onrender.com/delete-account.html",
+                    )
                 }
             }
+            }
         }
+        // Хотбар со стеклом, как в лобби
+        MainBottomBar(
+            selected = bottomTab,
+            onSelect = { vm.closeSettings(); onSelectTab(it); if (it == 2) vm.requestFriends() },
+            backdrop = backdrop,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
@@ -2585,6 +2697,34 @@ private fun SettingsToggleRow(
             Text(subtitle, fontSize = 13.sp, color = Color(0xFF8E8E93))
         }
         SettingsToggle(checked, onCheckedChange)
+    }
+}
+
+@Composable
+private fun SettingsLinkRow(label: String, subtitle: String, url: String) {
+    val uriHandler = LocalUriHandler.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { uriHandler.openUri(url) }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, fontSize = 13.sp, color = Color(0xFF8E8E93))
+        }
+        Icon(
+            Icons.Filled.OpenInNew,
+            contentDescription = null,
+            tint = Color(0xFF8E8E93),
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 

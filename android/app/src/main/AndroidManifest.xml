@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -12,6 +13,14 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.BitvaSlov"
         android:usesCleartextTraffic="true">
+
+        <!-- Реклама только Яндекс: автоинит AdMob вызывал падение на старте
+             (нет AdMob APPLICATION_ID), SDK AdMob в проекте не используется -->
+        <provider
+            android:name="com.google.android.gms.ads.MobileAdsInitProvider"
+            android:authorities="com.google.android.gms.ads.MobileAdsInitProvider"
+            android:exported="false"
+            tools:node="remove" />
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"

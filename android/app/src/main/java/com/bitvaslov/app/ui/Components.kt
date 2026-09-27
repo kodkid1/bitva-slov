@@ -883,13 +883,13 @@ fun LetterRing(
                 .fillMaxSize()
                 .padding(ringWidth + 7.dp)
                 .clip(CircleShape)
-                .background(Color.Black),
+                .glassSurface(CircleShape, alpha = 0.42f),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 letter.ifEmpty { "?" }.uppercase(),
                 fontSize = (size.value * 0.52f).sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontWeight = FontWeight.Black,
                 color = Color.White,
                 textAlign = TextAlign.Center,
             )

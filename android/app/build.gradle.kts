@@ -57,4 +57,5 @@ dependencies {
     implementation("io.socket:socket.io-client:2.1.1") {
         exclude(group = "org.json", module = "json")
     }
+    implementation("com.google.android.gms:play-services-ads-api:25.5.0")
 }
