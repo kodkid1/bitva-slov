@@ -1111,53 +1111,57 @@ private fun ProfileTab(state: UiState, vm: GameViewModel) {
 private fun WalletCard(state: UiState, vm: GameViewModel) {
     val wallet = state.wallet
     val next = TitleCatalog.nextAffordable(wallet.coins)
-    // компактная строка: весь блок открывает магазин
+    val hint = buildString {
+        if (wallet.streak > 0) append("серия ${wallet.streak}")
+        if (next != null) {
+            if (isNotEmpty()) append("   ·   ")
+            append("до «${next.name}» ещё ${next.price - wallet.coins}")
+        }
+    }
+    // плоский блок в стиле остальных карточек профиля, без рамки и градиента
     Column(
         Modifier
             .fillMaxWidth()
-            .glassSurface(RoundedCornerShape(20.dp), alpha = 0.60f)
+            .padding(horizontal = 20.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color(0xFF161618))
             .clickable { vm.requestShop() }
-            .padding(horizontal = 14.dp, vertical = 11.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+            .padding(start = 16.dp, end = 14.dp, top = 13.dp, bottom = 15.dp),
+        verticalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            CoinDot(20.dp)
-            Spacer(Modifier.width(7.dp))
+            CoinDot(22.dp)
+            Spacer(Modifier.width(9.dp))
             Text(
                 "${wallet.coins}",
-                fontSize = 19.sp,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Black,
                 color = Color.White,
             )
-            if (wallet.streak > 0) {
-                Spacer(Modifier.width(8.dp))
-                StatChip("серия ${wallet.streak}", color = AppColors.Warning)
-            }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(11.dp))
+            Text(
+                hint,
+                color = AppColors.TextSecondary,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             Text(
                 "МАГАЗИН",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp,
-                color = AppColors.Warning,
+                color = AppColors.TextSecondary,
             )
-            Spacer(Modifier.width(4.dp))
-            Image(
-                painterResource(R.drawable.ic_forward),
-                null,
-                modifier = Modifier.size(14.dp),
-            )
+            Spacer(Modifier.width(5.dp))
+            Image(painterResource(R.drawable.ic_forward), null, Modifier.size(15.dp))
         }
         if (next != null) {
             ThinProgress(
                 value = (wallet.coins.toFloat() / next.price).coerceIn(0f, 1f),
                 color = AppColors.Warning,
-                height = 4.dp,
-            )
-            Text(
-                "до «${next.name}» ещё ${next.price - wallet.coins}",
-                color = AppColors.TextSecondary,
-                fontSize = 11.sp,
+                height = 3.dp,
             )
         }
     }
